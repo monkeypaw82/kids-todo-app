@@ -1,0 +1,1242 @@
+(function () {
+  const TASK_EMOJIS = ['🛏️', '✏️', '📖', '🎹', '🏃', '🪥', '🧸', '🎨', '🎒', '🧼', '⚽', '📓', '🔢', '🔤', '🧹', '🌙'];
+  const GIFT_EMOJIS = ['🎁', '🧱', '🍦', '🎡', '🎮', '🚲', '📚', '🧸', '🍰', '🎨', '⚽', '🎟️'];
+
+  let state = TodoData.loadState();
+  if (!state.admin) state.admin = { passwordHash: '' };
+
+  let selectedDate = TodoData.getTodayStr();
+  let calYear = TodoData.parseDateStr(selectedDate).getFullYear();
+  let calMonth = TodoData.parseDateStr(selectedDate).getMonth();
+  let selectedCalDate = selectedDate;
+
+  // Admin state
+  let isAdminUnlocked = false;
+  let adminSelectedWeekday = TodoData.getWeekdayIndex(selectedDate);
+  let selectedGiftEmoji = state.giftConfig.emoji || '🎁';
+
+  // Photo editor transient state
+  let editorConfig = null;
+  let editorUploadedImg = null;
+  let isDraggingCanvas = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+
+  function playChime(type) {
+    if (!state.soundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const notes =
+        type === 'celebrate'
+          ? [523.25, 659.25, 783.99, 1046.5]
+          : type === 'check'
+          ? [587.33, 880]
+          : [349.23, 293.66];
+
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+        gain.gain.setValueAtTime(0.09, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.24);
+      });
+    } catch (e) {
+      // Ignore audio errors
+    }
+  }
+
+  function launchConfetti(originX, originY, count) {
+    const layer = document.getElementById('confetti-layer');
+    if (!layer) return;
+    const colors = ['#ff6b4a', '#ffb800', '#1eb9a8', '#4ea8de', '#a78bfa', '#f472b6'];
+    const cx = originX != null ? originX : window.innerWidth / 2;
+    const cy = originY != null ? originY : window.innerHeight * 0.35;
+    const total = count || 28;
+
+    for (let i = 0; i < total; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 70 + Math.random() * 190;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist - 60 + Math.random() * 120;
+      el.style.left = `${cx}px`;
+      el.style.top = `${cy}px`;
+      el.style.backgroundColor = colors[i % colors.length];
+      el.style.setProperty('--dx', `${dx}px`);
+      el.style.setProperty('--dy', `${dy}px`);
+      el.style.setProperty('--rot', `${Math.round(Math.random() * 540 - 270)}deg`);
+      layer.appendChild(el);
+      setTimeout(() => el.remove(), 1200);
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function ensureHeroPhoto() {
+    if (!state.profile.photoDataUrl) {
+      state.profile.photoDataUrl = PhotoEditor.generateDefaultHeroDataUrl(state.profile.photoMeta);
+      TodoData.saveState(state);
+    }
+  }
+
+  // ==================== KID SINGLE-PAGE RENDERING ====================
+  function renderHero() {
+    ensureHeroPhoto();
+    document.getElementById('hero-photo-img').src = state.profile.photoDataUrl;
+    document.getElementById('hero-title').textContent = state.profile.title || '아이의 오늘도 화이팅! 🌟';
+    document.getElementById('hero-subtitle').textContent =
+      state.profile.subtitle || '오늘의 할일을 완료하고 멋진 선물을 받아보세요!';
+
+    const stats = TodoData.getTotalStats(state);
+    document.getElementById('stat-total-points').textContent = `${stats.totalPoints} ⭐`;
+    document.getElementById('stat-streak').textContent = `${stats.streak}일 🔥`;
+    document.getElementById('stat-today-rate').textContent = `${stats.todayRate}%`;
+
+    const soundBtn = document.getElementById('btn-sound-toggle');
+    soundBtn.textContent = state.soundEnabled ? '🔊' : '🔇';
+  }
+
+  function renderWeekdayBoard() {
+    const today = TodoData.getTodayStr();
+    const weekDates = TodoData.getWeekDatesFor(selectedDate);
+    const tabsEl = document.getElementById('weekday-tabs');
+    tabsEl.innerHTML = '';
+
+    weekDates.forEach((dStr) => {
+      const wd = TodoData.getWeekdayIndex(dStr);
+      const dt = TodoData.parseDateStr(dStr);
+      const sum = TodoData.getDaySummary(state, dStr);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'weekday-btn';
+      if (wd === 0) btn.classList.add('sun');
+      if (wd === 6) btn.classList.add('sat');
+      if (dStr === selectedDate) btn.classList.add('active');
+
+      let dotClass = '';
+      if (sum.perfect) dotClass = 'perfect';
+      else if (sum.passed) dotClass = 'pass';
+      else if (sum.settled || dStr < today) dotClass = 'fail';
+
+      btn.innerHTML = `
+        ${dStr === today ? '<span class="today-badge">오늘</span>' : ''}
+        <span class="wd-name">${TodoData.WEEKDAYS_KO[wd]}</span>
+        <span class="wd-date">${dt.getMonth() + 1}/${dt.getDate()}</span>
+        <span class="wd-dot ${dotClass}"></span>
+      `;
+      btn.addEventListener('click', () => {
+        selectedDate = dStr;
+        renderWeekdayBoard();
+      });
+      tabsEl.appendChild(btn);
+    });
+
+    const summary = TodoData.getDaySummary(state, selectedDate);
+    document.getElementById('selected-date-label').textContent = TodoData.formatKoreanDate(selectedDate);
+    document.getElementById('task-list-heading').textContent = `${TodoData.WEEKDAYS_KO[summary.weekday]}요일 할일 (${summary.doneCount}/${summary.totalCount})`;
+
+    const fill = document.getElementById('progress-fill');
+    fill.style.width = `${summary.rate}%`;
+    fill.classList.remove('passed', 'perfect');
+    if (summary.perfect) fill.classList.add('perfect');
+    else if (summary.passed) fill.classList.add('passed');
+
+    const threshold = summary.threshold;
+    document.getElementById('threshold-marker').style.left = `${threshold}%`;
+    document.getElementById('threshold-marker-label').textContent = `기준 ${threshold}%`;
+    document.getElementById('progress-percent').textContent = `${summary.rate}%`;
+    document.getElementById('progress-fraction').textContent = `${summary.doneCount} / ${summary.totalCount} 완료`;
+
+    const statusText = document.getElementById('progress-status-text');
+    const alertBanner = document.getElementById('threshold-alert-banner');
+    alertBanner.className = 'threshold-alert-banner';
+
+    if (summary.totalCount === 0) {
+      statusText.textContent = '등록된 할일이 없어요';
+      alertBanner.classList.add('ok');
+      alertBanner.textContent = '🔒 관리자 메뉴의 "할일 편집"에서 요일별 할일을 설정할 수 있어요.';
+    } else if (summary.perfect) {
+      statusText.textContent = '와! 오늘 할일을 100% 끝냈어요! 🏆';
+      alertBanner.classList.add('perfect');
+      alertBanner.textContent = `🌟 최고예요! 오늘 +${summary.earnedPoints}점을 모두 획득했습니다!`;
+    } else if (summary.passed) {
+      statusText.textContent = '목표 성취도 달성 성공! 🎉';
+      alertBanner.classList.add('ok');
+      alertBanner.textContent = `✅ 성취도 ${summary.rate}%로 기준(${threshold}%)을 넘었어요! 남은 ${summary.totalCount - summary.doneCount}개도 도전해볼까요?`;
+    } else {
+      statusText.textContent = '조금만 더 힘내자! 💪';
+      alertBanner.classList.add('warn');
+      if (summary.penaltyPoints > 0) {
+        alertBanner.textContent = `⚠️ 기준(${threshold}%) 미달로 -${summary.penaltyPoints}점 감점되었어요. 지금 완료하면 감점이 취소돼요!`;
+      } else {
+        alertBanner.textContent = `⚠️ 현재 ${summary.rate}% (목표 ${threshold}%) — ${state.settings.cutoffTime}까지 미달 시 -${state.settings.penaltyPoints}점 감점 및 SMS 알림!`;
+      }
+    }
+
+    const ptsSummaryEl = document.getElementById('day-points-summary');
+    ptsSummaryEl.textContent =
+      summary.penaltyPoints > 0
+        ? `+${summary.earnedPoints} / -${summary.penaltyPoints}점`
+        : `오늘 +${summary.earnedPoints}점`;
+
+    // Kid Checklist (check-only, tap anywhere on row)
+    const listEl = document.getElementById('task-list');
+    const emptyEl = document.getElementById('task-empty');
+    listEl.innerHTML = '';
+
+    if (summary.tasks.length === 0) {
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      summary.tasks.forEach((task) => {
+        const isDone = summary.completedIds.includes(task.id);
+        const li = document.createElement('li');
+        li.className = `task-item${isDone ? ' done' : ''}`;
+        li.innerHTML = `
+          <button type="button" class="task-check-btn" aria-label="${escapeHtml(task.title)} 완료 체크">
+            ${isDone ? '✓' : ''}
+          </button>
+          <div class="task-emoji">${task.emoji || '⭐'}</div>
+          <div class="task-content">
+            <div class="task-title">${escapeHtml(task.title)}</div>
+            <div class="task-meta">
+              <span class="cat-badge" data-cat="${escapeHtml(task.category)}">${escapeHtml(task.category)}</span>
+              <span class="pts-badge">+${task.points} ⭐</span>
+            </div>
+          </div>
+        `;
+
+        li.addEventListener('click', (ev) => {
+          toggleTask(selectedDate, task.id, ev.clientX, ev.clientY);
+        });
+
+        listEl.appendChild(li);
+      });
+    }
+  }
+
+  function renderCalendarAndGift() {
+    const today = TodoData.getTodayStr();
+    document.getElementById('cal-month-title').textContent = `${calYear}년 ${calMonth + 1}월`;
+
+    const firstDay = new Date(calYear, calMonth, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+    const gridEl = document.getElementById('calendar-days');
+    gridEl.innerHTML = '';
+
+    for (let i = 0; i < startWeekday; i++) {
+      const empty = document.createElement('div');
+      empty.className = 'cal-cell empty';
+      gridEl.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const sum = TodoData.getDaySummary(state, dStr);
+      const hasRecord = Boolean(state.dailyRecords[dStr]);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cal-cell';
+      if (dStr === today) btn.classList.add('today');
+      if (dStr === selectedCalDate) btn.classList.add('selected');
+
+      let icon = '';
+      let rateTxt = '';
+      if (hasRecord && sum.totalCount > 0) {
+        if (sum.perfect) {
+          btn.classList.add('perfect');
+          icon = '🏆';
+        } else if (sum.passed) {
+          btn.classList.add('pass');
+          icon = '✅';
+        } else {
+          btn.classList.add('fail');
+          icon = '⚠️';
+        }
+        rateTxt = `${sum.rate}%`;
+      }
+
+      btn.innerHTML = `
+        <span class="cal-day-num">${day}</span>
+        <span class="cal-day-icon">${icon}</span>
+        <span class="cal-day-rate">${rateTxt}</span>
+      `;
+      btn.addEventListener('click', () => {
+        selectedCalDate = dStr;
+        renderCalendarAndGift();
+      });
+      gridEl.appendChild(btn);
+    }
+
+    const detailEl = document.getElementById('cal-day-detail');
+    const calSum = TodoData.getDaySummary(state, selectedCalDate);
+    const statusLabel = calSum.perfect
+      ? '🏆 완벽 달성 (100%)'
+      : calSum.passed
+      ? `✅ 기준 달성 (${calSum.rate}%)`
+      : calSum.penaltyPoints > 0
+      ? `⚠️ 기준 미달 (${calSum.rate}%, -${calSum.penaltyPoints}점)`
+      : `📝 성취도 ${calSum.rate}%`;
+
+    detailEl.innerHTML = `
+      <div class="cal-detail-head">
+        <div>
+          <strong>${TodoData.formatKoreanDate(selectedCalDate)}</strong>
+          <div class="section-sub">${statusLabel} · 순포인트 ${calSum.netPoints >= 0 ? '+' : ''}${calSum.netPoints}점</div>
+        </div>
+        <button type="button" id="btn-jump-to-date" class="btn btn-soft-sm">할일 보기 ↑</button>
+      </div>
+      <div class="cal-detail-tasks">
+        ${
+          calSum.tasks.length
+            ? calSum.tasks
+                .map((t) => {
+                  const done = calSum.completedIds.includes(t.id);
+                  return `<span class="mini-task-pill${done ? ' done' : ''}">${done ? '✓' : '○'} ${escapeHtml(t.title)}</span>`;
+                })
+                .join('')
+            : '<span class="section-sub">등록된 할일이 없습니다.</span>'
+        }
+      </div>
+    `;
+
+    document.getElementById('btn-jump-to-date').addEventListener('click', () => {
+      selectedDate = selectedCalDate;
+      renderWeekdayBoard();
+      document.getElementById('section-tasks').scrollIntoView({ behavior: 'smooth' });
+    });
+
+    // Kid Gift Progress Card
+    const cycle = TodoData.getCurrentGiftCycle(state, today);
+    const cfg = state.giftConfig;
+    document.getElementById('gift-cycle-period').textContent = `${cycle.cycleDays}일 주기 (${cycle.cycleStart} ~ ${cycle.cycleEnd})`;
+    document.getElementById('gift-emoji-display').textContent = cfg.emoji || '🎁';
+    document.getElementById('gift-name-display').textContent = cfg.name || '선물';
+
+    const pill = document.getElementById('gift-status-pill');
+    const qualBanner = document.getElementById('gift-qualified-banner');
+    const hintText = document.getElementById('gift-hint-text');
+
+    if (cycle.alreadyClaimed) {
+      pill.textContent = '🎉 수령 완료!';
+      pill.className = 'gift-status-pill qualified';
+      qualBanner.classList.add('hidden');
+      hintText.textContent = '이번 주기 선물을 이미 받았어요! 다음 주기도 화이팅!';
+    } else if (cycle.qualified) {
+      pill.textContent = '✨ 자격 획득!';
+      pill.className = 'gift-status-pill qualified';
+      qualBanner.classList.remove('hidden');
+      hintText.textContent = '조건을 모두 달성했어요!';
+    } else {
+      pill.textContent = '도전 중';
+      pill.className = 'gift-status-pill';
+      qualBanner.classList.add('hidden');
+      const remDays = Math.max(0, cycle.reqDays - cycle.passedDays);
+      const remPts = Math.max(0, cycle.reqPoints - cycle.cyclePoints);
+      hintText.textContent = `앞으로 ${remDays}일 달성 · ${remPts}점 더 모으면 자격 획득!`;
+    }
+
+    const daysPct = Math.min(100, Math.round((cycle.passedDays / cycle.reqDays) * 100));
+    const ptsPct = Math.min(100, Math.round((cycle.cyclePoints / cycle.reqPoints) * 100));
+    document.getElementById('gift-days-text').textContent = `${cycle.passedDays} / ${cycle.reqDays}일`;
+    document.getElementById('gift-days-bar').style.width = `${daysPct}%`;
+    document.getElementById('gift-points-text').textContent = `${cycle.cyclePoints} / ${cycle.reqPoints}점`;
+    document.getElementById('gift-points-bar').style.width = `${ptsPct}%`;
+
+    const histEl = document.getElementById('gift-history-list');
+    histEl.innerHTML = '';
+    if (state.giftClaims.length === 0) {
+      histEl.innerHTML = '<li class="section-sub">아직 받은 선물이 없어요. 첫 선물에 도전!</li>';
+    } else {
+      state.giftClaims.slice(0, 5).forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'gift-history-item';
+        li.innerHTML = `
+          <span><strong>${item.giftEmoji} ${escapeHtml(item.giftName)}</strong></span>
+          <span class="section-sub">${item.claimedAt}</span>
+        `;
+        histEl.appendChild(li);
+      });
+    }
+  }
+
+  // ==================== ADMIN PANEL RENDERING ====================
+  function renderAdminTasks() {
+    const pillsEl = document.getElementById('admin-weekday-pills');
+    pillsEl.innerHTML = '';
+    TodoData.WEEKDAY_ORDER.forEach((wd) => {
+      const count = (state.weekdayTasks[wd] || []).length;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `admin-wd-btn${wd === adminSelectedWeekday ? ' active' : ''}`;
+      btn.textContent = `${TodoData.WEEKDAYS_KO[wd]} (${count})`;
+      btn.addEventListener('click', () => {
+        adminSelectedWeekday = wd;
+        renderAdminTasks();
+      });
+      pillsEl.appendChild(btn);
+    });
+
+    const listEl = document.getElementById('admin-task-list');
+    const tasks = state.weekdayTasks[adminSelectedWeekday] || [];
+    listEl.innerHTML = '';
+
+    if (tasks.length === 0) {
+      listEl.innerHTML = `<li class="section-sub" style="padding: 16px; text-align:center;">${TodoData.WEEKDAYS_KO[adminSelectedWeekday]}요일에 등록된 할일이 없습니다. 상단 버튼으로 항목을 추가하세요.</li>`;
+      return;
+    }
+
+    tasks.forEach((task) => {
+      const li = document.createElement('li');
+      li.className = 'admin-task-row';
+      li.innerHTML = `
+        <div class="task-emoji">${task.emoji || '⭐'}</div>
+        <div class="task-content">
+          <div class="task-title">${escapeHtml(task.title)}</div>
+          <div class="task-meta">
+            <span class="cat-badge" data-cat="${escapeHtml(task.category)}">${escapeHtml(task.category)}</span>
+            <span class="pts-badge">+${task.points} ⭐</span>
+          </div>
+        </div>
+        <div class="admin-task-actions">
+          <button type="button" class="btn btn-soft-sm btn-admin-edit">✏️ 편집</button>
+          <button type="button" class="icon-btn-sm btn-admin-del" title="삭제">🗑️</button>
+        </div>
+      `;
+
+      li.querySelector('.btn-admin-edit').addEventListener('click', () => {
+        openTaskModal(task, adminSelectedWeekday);
+      });
+
+      li.querySelector('.btn-admin-del').addEventListener('click', () => {
+        if (confirm(`"${task.title}" 항목을 ${TodoData.WEEKDAYS_KO[adminSelectedWeekday]}요일에서 삭제할까요?`)) {
+          state.weekdayTasks[adminSelectedWeekday] = tasks.filter((t) => t.id !== task.id);
+          TodoData.saveState(state);
+          renderAll();
+        }
+      });
+
+      listEl.appendChild(li);
+    });
+  }
+
+  function renderAdminGift() {
+    const cfg = state.giftConfig;
+    document.getElementById('gift-name-input').value = cfg.name || '';
+    document.getElementById('gift-cycle-days').value = String(cfg.cycleDays || 7);
+    document.getElementById('gift-req-days').value = String(cfg.requiredDays || 5);
+    document.getElementById('gift-req-points').value = String(cfg.requiredPoints || 120);
+    selectedGiftEmoji = cfg.emoji || '🎁';
+
+    const ep = document.getElementById('gift-emoji-picker');
+    ep.innerHTML = '';
+    GIFT_EMOJIS.forEach((em) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `emoji-opt${em === selectedGiftEmoji ? ' active' : ''}`;
+      b.textContent = em;
+      b.addEventListener('click', () => {
+        selectedGiftEmoji = em;
+        ep.querySelectorAll('.emoji-opt').forEach((x) => x.classList.toggle('active', x.textContent === em));
+      });
+      ep.appendChild(b);
+    });
+
+    const today = TodoData.getTodayStr();
+    const cycle = TodoData.getCurrentGiftCycle(state, today);
+    document.getElementById('admin-gift-status-box').innerHTML = `
+      <div><strong>현재 주기:</strong> ${cycle.cycleStart} ~ ${cycle.cycleEnd} (${cycle.cycleDays}일)</div>
+      <div><strong>달성 일수:</strong> ${cycle.passedDays} / ${cycle.reqDays}일</div>
+      <div><strong>주기 순포인트:</strong> ${cycle.cyclePoints} / ${cycle.reqPoints}점</div>
+      <div><strong>상태:</strong> ${
+        cycle.alreadyClaimed
+          ? '🎉 수령 완료 처리됨'
+          : cycle.qualified
+          ? '✨ 선물 받을 자격 충족!'
+          : '진행 중'
+      }</div>
+    `;
+
+    const claimArea = document.getElementById('admin-gift-claim-area');
+    if (cycle.alreadyClaimed) {
+      claimArea.innerHTML = '<p class="help-text">이번 주기 선물 수령 기록이 이미 완료되었습니다.</p>';
+    } else if (cycle.qualified) {
+      claimArea.innerHTML = `<button type="button" id="btn-admin-claim-gift" class="btn btn-warning" style="width:100%;">🎁 선물 수령 완료 기록하기</button>`;
+      document.getElementById('btn-admin-claim-gift').addEventListener('click', () => {
+        state.giftClaims.unshift({
+          id: TodoData.uid('gift'),
+          cycleKey: cycle.cycleKey,
+          claimedAt: today,
+          cycleLabel: `${cycle.cycleStart} ~ ${cycle.cycleEnd}`,
+          giftName: cfg.name,
+          giftEmoji: cfg.emoji || '🎁'
+        });
+        TodoData.saveState(state);
+        playChime('celebrate');
+        launchConfetti(window.innerWidth / 2, window.innerHeight / 2, 50);
+        renderAll();
+      });
+    } else {
+      claimArea.innerHTML = '<p class="help-text">아이가 목표 일수와 포인트를 모두 충족하면 이곳에서 선물 수령 완료 처리를 할 수 있습니다.</p>';
+    }
+  }
+
+  function renderAdminSmsAndLogs() {
+    const s = state.settings;
+    document.getElementById('setting-threshold').value = s.threshold;
+    document.getElementById('setting-threshold-val').textContent = `${s.threshold}%`;
+    document.getElementById('setting-penalty').value = s.penaltyPoints;
+    document.getElementById('setting-cutoff').value = s.cutoffTime;
+    document.getElementById('setting-sms-enabled').checked = Boolean(s.smsEnabled);
+    document.getElementById('setting-parent-phone').value = s.parentPhone || '';
+    document.getElementById('setting-child-phone').value = s.childPhone || '';
+    document.getElementById('setting-webhook').value = s.webhookUrl || '';
+
+    const smsList = document.getElementById('sms-log-list');
+    smsList.innerHTML = '';
+    if (state.smsLogs.length === 0) {
+      smsList.innerHTML = '<div class="section-sub">아직 발송된 SMS 알림이 없습니다.</div>';
+    } else {
+      state.smsLogs.forEach((log) => {
+        const div = document.createElement('div');
+        div.className = 'sms-log-item';
+        div.innerHTML = `
+          <div class="sms-log-meta">
+            <span>수신: ${escapeHtml(log.to)}</span>
+            <span>${escapeHtml(log.timestamp)} · ${escapeHtml(log.status)}</span>
+          </div>
+          <div class="sms-log-msg">${escapeHtml(log.message)}</div>
+        `;
+        smsList.appendChild(div);
+      });
+    }
+
+    const penList = document.getElementById('penalty-log-list');
+    penList.innerHTML = '';
+    if (state.penaltyLogs.length === 0) {
+      penList.innerHTML = '<div class="section-sub">감점 및 변동 기록이 없습니다.</div>';
+    } else {
+      state.penaltyLogs.forEach((log) => {
+        const isDeduct = log.points < 0;
+        const div = document.createElement('div');
+        div.className = `penalty-log-item${isDeduct ? ' deduct' : ''}`;
+        div.innerHTML = `
+          <div>
+            <div><strong>${log.date}</strong></div>
+            <div class="section-sub">${escapeHtml(log.reason)}</div>
+          </div>
+          <span class="penalty-pts${isDeduct ? '' : ' plus'}">${log.points > 0 ? '+' : ''}${log.points}점</span>
+        `;
+        penList.appendChild(div);
+      });
+    }
+  }
+
+  function renderAll() {
+    renderHero();
+    renderWeekdayBoard();
+    renderCalendarAndGift();
+    if (isAdminUnlocked) {
+      renderAdminTasks();
+      renderAdminGift();
+      renderAdminSmsAndLogs();
+    }
+  }
+
+  // ==================== KID INTERACTIONS ====================
+  function toggleTask(dateStr, taskId, clickX, clickY) {
+    if (!state.dailyRecords[dateStr]) {
+      state.dailyRecords[dateStr] = {
+        completedIds: [],
+        settled: false,
+        penaltyApplied: 0,
+        smsSent: false
+      };
+    }
+    const rec = state.dailyRecords[dateStr];
+    const idx = rec.completedIds.indexOf(taskId);
+    const wasPassed = TodoData.getDaySummary(state, dateStr).passed;
+
+    if (idx >= 0) {
+      rec.completedIds.splice(idx, 1);
+      playChime('uncheck');
+    } else {
+      rec.completedIds.push(taskId);
+      const after = TodoData.getDaySummary(state, dateStr);
+      if (after.perfect) {
+        playChime('celebrate');
+        launchConfetti(clickX, clickY, 45);
+      } else if (!wasPassed && after.passed) {
+        playChime('celebrate');
+        launchConfetti(clickX, clickY, 26);
+      } else {
+        playChime('check');
+        launchConfetti(clickX, clickY, 12);
+      }
+    }
+
+    const afterSummary = TodoData.getDaySummary(state, dateStr);
+    if (rec.penaltyApplied > 0 && afterSummary.passed) {
+      const refunded = rec.penaltyApplied;
+      rec.penaltyApplied = 0;
+      state.penaltyLogs.unshift({
+        id: TodoData.uid('pen'),
+        date: dateStr,
+        reason: `할일 추가 완료로 기준(${afterSummary.threshold}%) 달성 → 감점 취소`,
+        points: +refunded
+      });
+    }
+
+    TodoData.saveState(state);
+    renderAll();
+  }
+
+  // ==================== ADMIN AUTH & PANEL ====================
+  function openAdminAuth() {
+    const modal = document.getElementById('admin-auth-modal');
+    const setupForm = document.getElementById('admin-setup-form');
+    const loginForm = document.getElementById('admin-login-form');
+    const titleEl = document.getElementById('admin-auth-title');
+
+    document.getElementById('setup-pw-error').classList.add('hidden');
+    document.getElementById('login-pw-error').classList.add('hidden');
+
+    if (!state.admin || !state.admin.passwordHash) {
+      titleEl.textContent = '🔐 관리자 비밀번호 초기 설정';
+      setupForm.classList.remove('hidden');
+      loginForm.classList.add('hidden');
+      document.getElementById('setup-pw-1').value = '';
+      document.getElementById('setup-pw-2').value = '';
+      modal.classList.remove('hidden');
+      document.getElementById('setup-pw-1').focus();
+    } else {
+      titleEl.textContent = '🔐 관리자 비밀번호 입력';
+      setupForm.classList.add('hidden');
+      loginForm.classList.remove('hidden');
+      document.getElementById('login-pw-input').value = '';
+      modal.classList.remove('hidden');
+      document.getElementById('login-pw-input').focus();
+    }
+  }
+
+  function openAdminPanel() {
+    isAdminUnlocked = true;
+    adminSelectedWeekday = TodoData.getWeekdayIndex(selectedDate);
+    document.getElementById('admin-auth-modal').classList.add('hidden');
+    document.getElementById('admin-modal').classList.remove('hidden');
+    switchAdminTab('tasks');
+    renderAdminTasks();
+    renderAdminGift();
+    renderAdminSmsAndLogs();
+  }
+
+  function closeAdminPanel() {
+    isAdminUnlocked = false;
+    document.getElementById('admin-modal').classList.add('hidden');
+  }
+
+  function switchAdminTab(tabName) {
+    document.querySelectorAll('.admin-tab').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.adminTab === tabName);
+    });
+    document.querySelectorAll('.admin-panel').forEach((panel) => {
+      panel.classList.toggle('active', panel.id === `admin-panel-${tabName}`);
+    });
+  }
+
+  // ==================== TASK EDIT MODAL (ADMIN ONLY) ====================
+  let selectedTaskEmoji = '✏️';
+  let editingWeekday = null;
+
+  function openTaskModal(existingTask, weekdayIdx) {
+    if (!isAdminUnlocked) return;
+    const modal = document.getElementById('task-modal');
+    const titleEl = document.getElementById('task-modal-title');
+    const idInput = document.getElementById('task-edit-id');
+    const nameInput = document.getElementById('task-title-input');
+    const catInput = document.getElementById('task-category-input');
+    const ptsInput = document.getElementById('task-points-input');
+    const daysGroup = document.getElementById('task-days-group');
+
+    editingWeekday = weekdayIdx != null ? weekdayIdx : adminSelectedWeekday;
+
+    if (existingTask) {
+      titleEl.textContent = '할일 항목 편집';
+      idInput.value = existingTask.id;
+      nameInput.value = existingTask.title;
+      catInput.value = existingTask.category || '공부';
+      ptsInput.value = String(existingTask.points || 10);
+      selectedTaskEmoji = existingTask.emoji || '⭐';
+      daysGroup.style.display = 'none';
+    } else {
+      titleEl.textContent = '새 할일 항목 등록';
+      idInput.value = '';
+      nameInput.value = '';
+      catInput.value = '공부';
+      ptsInput.value = '10';
+      selectedTaskEmoji = '✏️';
+      daysGroup.style.display = 'flex';
+    }
+
+    const ep = document.getElementById('task-emoji-picker');
+    ep.innerHTML = '';
+    TASK_EMOJIS.forEach((em) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `emoji-opt${em === selectedTaskEmoji ? ' active' : ''}`;
+      b.textContent = em;
+      b.addEventListener('click', () => {
+        selectedTaskEmoji = em;
+        ep.querySelectorAll('.emoji-opt').forEach((x) => x.classList.toggle('active', x.textContent === em));
+      });
+      ep.appendChild(b);
+    });
+
+    const dayGrid = document.getElementById('task-day-checkboxes');
+    dayGrid.innerHTML = '';
+    TodoData.WEEKDAY_ORDER.forEach((wd) => {
+      const checked = wd === editingWeekday;
+      const lbl = document.createElement('label');
+      lbl.className = `day-check-label${checked ? ' checked' : ''}`;
+      lbl.innerHTML = `<input type="checkbox" value="${wd}" ${checked ? 'checked' : ''} />${TodoData.WEEKDAYS_KO[wd]}`;
+      const cb = lbl.querySelector('input');
+      cb.addEventListener('change', () => {
+        lbl.classList.toggle('checked', cb.checked);
+      });
+      dayGrid.appendChild(lbl);
+    });
+
+    modal.classList.remove('hidden');
+    nameInput.focus();
+  }
+
+  // ==================== PHOTO EDITOR MODAL (KID & PARENT) ====================
+  function openPhotoModal() {
+    const meta = state.profile.photoMeta || {};
+    editorConfig = {
+      preset: meta.preset || 'space',
+      zoom: meta.zoom || 1,
+      rotate: meta.rotate || 0,
+      brightness: meta.brightness || 100,
+      offsetX: meta.offsetX || 0,
+      offsetY: meta.offsetY || 0,
+      filter: meta.filter || 'none',
+      frame: meta.frame || 'none',
+      stickers: Array.isArray(meta.stickers) ? [...meta.stickers] : ['⭐']
+    };
+
+    document.getElementById('edit-hero-title').value = state.profile.title || '';
+    document.getElementById('edit-hero-subtitle').value = state.profile.subtitle || '';
+    syncPhotoControlsUI();
+    renderPhotoPresets();
+
+    document.getElementById('photo-modal').classList.remove('hidden');
+    redrawEditorCanvas();
+  }
+
+  function renderPhotoPresets() {
+    const wrap = document.getElementById('photo-presets');
+    wrap.innerHTML = '';
+    PhotoEditor.PRESETS.forEach((p) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `chip${!editorUploadedImg && editorConfig.preset === p.id ? ' active' : ''}`;
+      btn.textContent = p.label;
+      btn.addEventListener('click', () => {
+        editorUploadedImg = null;
+        editorConfig.preset = p.id;
+        editorConfig.offsetX = 0;
+        editorConfig.offsetY = 0;
+        renderPhotoPresets();
+        redrawEditorCanvas();
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function syncPhotoControlsUI() {
+    document.getElementById('photo-zoom').value = editorConfig.zoom;
+    document.getElementById('photo-zoom-val').textContent = `${Math.round(editorConfig.zoom * 100)}%`;
+    document.getElementById('photo-rotate').value = editorConfig.rotate;
+    document.getElementById('photo-rotate-val').textContent = `${editorConfig.rotate}°`;
+    document.getElementById('photo-brightness').value = editorConfig.brightness;
+    document.getElementById('photo-brightness-val').textContent = `${editorConfig.brightness}%`;
+
+    document.querySelectorAll('#photo-filters .chip').forEach((c) => {
+      c.classList.toggle('active', c.dataset.filter === editorConfig.filter);
+    });
+    document.querySelectorAll('#photo-frames .chip').forEach((c) => {
+      c.classList.toggle('active', c.dataset.frame === editorConfig.frame);
+    });
+    document.querySelectorAll('#photo-stickers .sticker-btn').forEach((b) => {
+      b.classList.toggle('active', editorConfig.stickers.includes(b.dataset.sticker));
+    });
+  }
+
+  function redrawEditorCanvas() {
+    const canvas = document.getElementById('photo-editor-canvas');
+    if (!canvas || !editorConfig) return;
+    PhotoEditor.renderToCanvas(canvas, editorConfig, editorUploadedImg);
+  }
+
+  // ==================== EVENT LISTENERS ====================
+  function bindEvents() {
+    // Sound toggle
+    document.getElementById('btn-sound-toggle').addEventListener('click', () => {
+      state.soundEnabled = !state.soundEnabled;
+      TodoData.saveState(state);
+      renderHero();
+      if (state.soundEnabled) playChime('check');
+    });
+
+    // SMS Toast close
+    document.getElementById('sms-toast-close').addEventListener('click', () => {
+      document.getElementById('sms-toast').classList.add('hidden');
+    });
+
+    // Modal close buttons & backdrop click
+    document.querySelectorAll('.modal-close').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.close;
+        if (target) document.getElementById(target).classList.add('hidden');
+      });
+    });
+    document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) {
+          if (backdrop.id === 'admin-modal') closeAdminPanel();
+          else backdrop.classList.add('hidden');
+        }
+      });
+    });
+
+    // Kid main page buttons
+    document.getElementById('btn-go-today').addEventListener('click', () => {
+      selectedDate = TodoData.getTodayStr();
+      renderWeekdayBoard();
+    });
+    document.getElementById('btn-edit-photo').addEventListener('click', openPhotoModal);
+    document.getElementById('btn-open-admin').addEventListener('click', openAdminAuth);
+
+    // Mobile bottom bar
+    document.getElementById('mobile-btn-photo').addEventListener('click', openPhotoModal);
+    document.getElementById('mobile-btn-admin').addEventListener('click', openAdminAuth);
+    document.querySelectorAll('.mobile-nav-item[data-jump]').forEach((link) => {
+      link.addEventListener('click', () => {
+        document.querySelectorAll('.mobile-nav-item[data-jump]').forEach((el) => el.classList.remove('active'));
+        link.classList.add('active');
+      });
+    });
+
+    // Calendar nav
+    document.getElementById('cal-prev-month').addEventListener('click', () => {
+      calMonth--;
+      if (calMonth < 0) {
+        calMonth = 11;
+        calYear--;
+      }
+      renderCalendarAndGift();
+    });
+    document.getElementById('cal-next-month').addEventListener('click', () => {
+      calMonth++;
+      if (calMonth > 11) {
+        calMonth = 0;
+        calYear++;
+      }
+      renderCalendarAndGift();
+    });
+
+    // Admin Auth Forms
+    document.getElementById('admin-setup-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pw1 = document.getElementById('setup-pw-1').value;
+      const pw2 = document.getElementById('setup-pw-2').value;
+      const errEl = document.getElementById('setup-pw-error');
+
+      if (pw1.length < 4) {
+        errEl.textContent = '비밀번호는 4자 이상으로 설정해주세요.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (pw1 !== pw2) {
+        errEl.textContent = '비밀번호가 일치하지 않습니다.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      state.admin = { passwordHash: TodoData.hashPassword(pw1) };
+      TodoData.saveState(state);
+      openAdminPanel();
+    });
+
+    document.getElementById('admin-login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pw = document.getElementById('login-pw-input').value;
+      const errEl = document.getElementById('login-pw-error');
+      if (TodoData.hashPassword(pw) !== state.admin.passwordHash) {
+        errEl.textContent = '비밀번호가 올바르지 않습니다.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      openAdminPanel();
+    });
+
+    // Admin Panel Controls
+    document.getElementById('btn-close-admin').addEventListener('click', closeAdminPanel);
+    document.querySelectorAll('.admin-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        switchAdminTab(btn.dataset.adminTab);
+      });
+    });
+
+    // Admin Task Editor
+    document.getElementById('btn-admin-new-task').addEventListener('click', () => {
+      openTaskModal(null, adminSelectedWeekday);
+    });
+
+    document.getElementById('btn-days-weekdays').addEventListener('click', () => {
+      document.querySelectorAll('#task-day-checkboxes input').forEach((cb) => {
+        const wd = Number(cb.value);
+        cb.checked = wd >= 1 && wd <= 5;
+        cb.parentElement.classList.toggle('checked', cb.checked);
+      });
+    });
+    document.getElementById('btn-days-all').addEventListener('click', () => {
+      document.querySelectorAll('#task-day-checkboxes input').forEach((cb) => {
+        cb.checked = true;
+        cb.parentElement.classList.add('checked', true);
+      });
+    });
+
+    document.getElementById('task-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!isAdminUnlocked) return;
+      const editId = document.getElementById('task-edit-id').value;
+      const title = document.getElementById('task-title-input').value.trim();
+      const category = document.getElementById('task-category-input').value;
+      const points = Number(document.getElementById('task-points-input').value || 10);
+      if (!title) return;
+
+      if (editId) {
+        const list = state.weekdayTasks[editingWeekday] || [];
+        const target = list.find((t) => t.id === editId);
+        if (target) {
+          target.title = title;
+          target.category = category;
+          target.points = points;
+          target.emoji = selectedTaskEmoji;
+        }
+      } else {
+        const checkedDays = Array.from(document.querySelectorAll('#task-day-checkboxes input:checked')).map((c) =>
+          Number(c.value)
+        );
+        const daysToAdd = checkedDays.length ? checkedDays : [editingWeekday];
+        daysToAdd.forEach((wd) => {
+          if (!state.weekdayTasks[wd]) state.weekdayTasks[wd] = [];
+          state.weekdayTasks[wd].push({
+            id: TodoData.uid('task'),
+            title,
+            category,
+            points,
+            emoji: selectedTaskEmoji
+          });
+        });
+      }
+
+      TodoData.saveState(state);
+      document.getElementById('task-modal').classList.add('hidden');
+      renderAll();
+    });
+
+    // Admin Gift Settings
+    document.getElementById('admin-gift-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!isAdminUnlocked) return;
+      state.giftConfig.name = document.getElementById('gift-name-input').value.trim() || '선물';
+      state.giftConfig.emoji = selectedGiftEmoji;
+      state.giftConfig.cycleDays = Number(document.getElementById('gift-cycle-days').value || 7);
+      state.giftConfig.requiredDays = Number(document.getElementById('gift-req-days').value || 5);
+      state.giftConfig.requiredPoints = Number(document.getElementById('gift-req-points').value || 100);
+      TodoData.saveState(state);
+      renderAll();
+      alert('✅ 선물 설정이 저장되었습니다!');
+    });
+
+    // Admin SMS & Penalty Settings
+    const threshSlider = document.getElementById('setting-threshold');
+    threshSlider.addEventListener('input', () => {
+      document.getElementById('setting-threshold-val').textContent = `${threshSlider.value}%`;
+    });
+
+    document.getElementById('sms-settings-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!isAdminUnlocked) return;
+      state.settings.threshold = Number(document.getElementById('setting-threshold').value || 70);
+      state.settings.penaltyPoints = Number(document.getElementById('setting-penalty').value || 0);
+      state.settings.cutoffTime = document.getElementById('setting-cutoff').value || '20:00';
+      state.settings.smsEnabled = document.getElementById('setting-sms-enabled').checked;
+      state.settings.parentPhone = document.getElementById('setting-parent-phone').value.trim();
+      state.settings.childPhone = document.getElementById('setting-child-phone').value.trim();
+      state.settings.webhookUrl = document.getElementById('setting-webhook').value.trim();
+      TodoData.saveState(state);
+      renderAll();
+      alert('✅ SMS 알림 및 감점 규칙이 저장되었습니다!');
+    });
+
+    document.getElementById('btn-test-sms').addEventListener('click', async () => {
+      if (!isAdminUnlocked) return;
+      await SmsService.settleDay(state, TodoData.getTodayStr(), { testOnly: true, forceSms: true });
+      renderAll();
+    });
+
+    document.getElementById('btn-run-daily-check').addEventListener('click', async () => {
+      if (!isAdminUnlocked) return;
+      const res = await SmsService.settleDay(state, TodoData.getTodayStr(), { forceSms: true });
+      renderAll();
+      if (res.missingCount === 0) {
+        playChime('celebrate');
+        alert('🎉 오늘의 모든 할일이 완료되어 감점 없이 마감되었습니다!');
+      }
+    });
+
+    document.getElementById('btn-clear-sms-log').addEventListener('click', () => {
+      if (!isAdminUnlocked) return;
+      if (confirm('SMS 발송 내역을 모두 비울까요?')) {
+        state.smsLogs = [];
+        TodoData.saveState(state);
+        renderAll();
+      }
+    });
+
+    // Admin Security & Data
+    document.getElementById('admin-change-pw-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!isAdminUnlocked) return;
+      const curPw = document.getElementById('cur-pw-input').value;
+      const newPw = document.getElementById('new-pw-input').value;
+      const newPw2 = document.getElementById('new-pw-confirm').value;
+      const msgEl = document.getElementById('change-pw-msg');
+
+      msgEl.className = 'form-error';
+      if (TodoData.hashPassword(curPw) !== state.admin.passwordHash) {
+        msgEl.textContent = '현재 비밀번호가 일치하지 않습니다.';
+        return;
+      }
+      if (newPw.length < 4) {
+        msgEl.textContent = '새 비밀번호는 4자 이상이어야 합니다.';
+        return;
+      }
+      if (newPw !== newPw2) {
+        msgEl.textContent = '새 비밀번호 확인이 일치하지 않습니다.';
+        return;
+      }
+
+      state.admin.passwordHash = TodoData.hashPassword(newPw);
+      TodoData.saveState(state);
+      document.getElementById('cur-pw-input').value = '';
+      document.getElementById('new-pw-input').value = '';
+      document.getElementById('new-pw-confirm').value = '';
+      msgEl.className = 'form-error success';
+      msgEl.textContent = '✅ 관리자 비밀번호가 성공적으로 변경되었습니다!';
+    });
+
+    document.getElementById('btn-reset-demo').addEventListener('click', () => {
+      if (!isAdminUnlocked) return;
+      if (confirm('샘플 데이터로 초기화할까요? (관리자 비밀번호는 유지됩니다)')) {
+        const savedAdmin = Object.assign({}, state.admin);
+        state = TodoData.createDemoState();
+        state.admin = savedAdmin;
+        TodoData.saveState(state);
+        selectedDate = TodoData.getTodayStr();
+        selectedCalDate = selectedDate;
+        renderAll();
+      }
+    });
+
+    document.getElementById('btn-clear-all').addEventListener('click', () => {
+      if (!isAdminUnlocked) return;
+      if (confirm('기록을 모두 지우고 내 데이터로 새로 시작할까요? (관리자 비밀번호는 유지됩니다)')) {
+        const savedAdmin = Object.assign({}, state.admin);
+        state = TodoData.createEmptyState();
+        state.admin = savedAdmin;
+        TodoData.saveState(state);
+        selectedDate = TodoData.getTodayStr();
+        selectedCalDate = selectedDate;
+        renderAll();
+      }
+    });
+
+    // Photo Editor Events
+    document.getElementById('photo-file-input').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          editorUploadedImg = img;
+          editorConfig.zoom = 1;
+          editorConfig.rotate = 0;
+          editorConfig.offsetX = 0;
+          editorConfig.offsetY = 0;
+          syncPhotoControlsUI();
+          renderPhotoPresets();
+          redrawEditorCanvas();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('btn-photo-reset-transform').addEventListener('click', () => {
+      editorConfig.zoom = 1;
+      editorConfig.rotate = 0;
+      editorConfig.brightness = 100;
+      editorConfig.offsetX = 0;
+      editorConfig.offsetY = 0;
+      syncPhotoControlsUI();
+      redrawEditorCanvas();
+    });
+
+    document.getElementById('photo-zoom').addEventListener('input', (e) => {
+      editorConfig.zoom = Number(e.target.value);
+      document.getElementById('photo-zoom-val').textContent = `${Math.round(editorConfig.zoom * 100)}%`;
+      redrawEditorCanvas();
+    });
+
+    document.getElementById('photo-rotate').addEventListener('input', (e) => {
+      editorConfig.rotate = Number(e.target.value);
+      document.getElementById('photo-rotate-val').textContent = `${editorConfig.rotate}°`;
+      redrawEditorCanvas();
+    });
+
+    document.getElementById('photo-brightness').addEventListener('input', (e) => {
+      editorConfig.brightness = Number(e.target.value);
+      document.getElementById('photo-brightness-val').textContent = `${editorConfig.brightness}%`;
+      redrawEditorCanvas();
+    });
+
+    document.querySelectorAll('#photo-filters .chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        editorConfig.filter = chip.dataset.filter;
+        syncPhotoControlsUI();
+        redrawEditorCanvas();
+      });
+    });
+
+    document.querySelectorAll('#photo-frames .chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        editorConfig.frame = chip.dataset.frame;
+        syncPhotoControlsUI();
+        redrawEditorCanvas();
+      });
+    });
+
+    document.querySelectorAll('#photo-stickers .sticker-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const st = btn.dataset.sticker;
+        const idx = editorConfig.stickers.indexOf(st);
+        if (idx >= 0) editorConfig.stickers.splice(idx, 1);
+        else editorConfig.stickers.push(st);
+        syncPhotoControlsUI();
+        redrawEditorCanvas();
+      });
+    });
+
+    const canvas = document.getElementById('photo-editor-canvas');
+    function getPointerPos(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      return {
+        x: ((clientX - rect.left) / rect.width) * canvas.width,
+        y: ((clientY - rect.top) / rect.height) * canvas.height
+      };
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDraggingCanvas = true;
+      const pos = getPointerPos(e);
+      dragStartX = pos.x - editorConfig.offsetX;
+      dragStartY = pos.y - editorConfig.offsetY;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingCanvas || !editorConfig) return;
+      const pos = getPointerPos(e);
+      editorConfig.offsetX = pos.x - dragStartX;
+      editorConfig.offsetY = pos.y - dragStartY;
+      redrawEditorCanvas();
+    });
+    window.addEventListener('mouseup', () => {
+      isDraggingCanvas = false;
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+      isDraggingCanvas = true;
+      const pos = getPointerPos(e);
+      dragStartX = pos.x - editorConfig.offsetX;
+      dragStartY = pos.y - editorConfig.offsetY;
+    });
+    canvas.addEventListener(
+      'touchmove',
+      (e) => {
+        if (!isDraggingCanvas || !editorConfig) return;
+        e.preventDefault();
+        const pos = getPointerPos(e);
+        editorConfig.offsetX = pos.x - dragStartX;
+        editorConfig.offsetY = pos.y - dragStartY;
+        redrawEditorCanvas();
+      },
+      { passive: false }
+    );
+    canvas.addEventListener('touchend', () => {
+      isDraggingCanvas = false;
+    });
+
+    document.getElementById('btn-save-photo').addEventListener('click', () => {
+      state.profile.title = document.getElementById('edit-hero-title').value.trim() || '아이의 오늘도 화이팅! 🌟';
+      state.profile.subtitle = document.getElementById('edit-hero-subtitle').value.trim() || '';
+      state.profile.photoMeta = Object.assign({}, editorConfig);
+      state.profile.photoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      TodoData.saveState(state);
+      document.getElementById('photo-modal').classList.add('hidden');
+      renderHero();
+      playChime('celebrate');
+      launchConfetti(window.innerWidth / 2, 180, 30);
+    });
+  }
+
+  function startCutoffWatcher() {
+    setInterval(async () => {
+      const today = TodoData.getTodayStr();
+      const rec = state.dailyRecords[today];
+      if (rec && rec.settled) return;
+      if (SmsService.isPastCutoff(state.settings.cutoffTime)) {
+        await SmsService.settleDay(state, today, { forceSms: false });
+        renderAll();
+      }
+    }, 60000);
+  }
+
+  bindEvents();
+  renderAll();
+  startCutoffWatcher();
+})();

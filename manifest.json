@@ -1,0 +1,17 @@
+{
+  "name": "반짝반짝 아이의 할일 관리",
+  "short_name": "아이 할일",
+  "description": "요일별 할일 체크, 달력 관리, 주기별 선물, 일일 SMS 알림 웹 앱",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fffbf4",
+  "theme_color": "#ff6b4a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23ff6b4a'/%3E%3Ctext x='90' y='118' font-size='96' text-anchor='middle'%3E%E2%AD%90%3C/text%3E%3C/svg%3E",
+      "sizes": "180x180",
+      "type": "image/svg+xml"
+    }
+  ]
+}

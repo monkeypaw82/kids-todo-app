@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="아이 할일" />
+  <meta name="theme-color" content="#ff6b4a" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%23ff6b4a'/%3E%3Ctext x='90' y='118' font-size='96' text-anchor='middle'%3E%E2%AD%90%3C/text%3E%3C/svg%3E" />
+  <title>반짝반짝 아이의 할일 관리</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
+
+  <!-- SMS Push Toast Preview -->
+  <div id="sms-toast" class="sms-toast hidden" role="alert" aria-live="polite">
+    <div class="sms-toast-header">
+      <span class="sms-toast-badge">💬 문자메시지 (SMS)</span>
+      <span id="sms-toast-time" class="sms-toast-time">방금 전</span>
+      <button id="sms-toast-close" class="icon-btn-sm" aria-label="닫기">✕</button>
+    </div>
+    <div id="sms-toast-to" class="sms-toast-to"></div>
+    <div id="sms-toast-body" class="sms-toast-body"></div>
+  </div>
+
+  <div class="app-shell">
+    <!-- Top Header / Editable Hero Photo Banner -->
+    <header id="section-hero" class="hero-card">
+      <div class="hero-photo-wrap">
+        <img id="hero-photo-img" class="hero-photo-img" alt="아이의 메인 사진" />
+        <div class="hero-photo-overlay">
+          <div class="hero-top-actions">
+            <span class="app-brand-pill">✨ 반짝반짝 아이의 할일</span>
+            <div class="hero-btn-group">
+              <button id="btn-sound-toggle" class="glass-btn" title="효과음 켜기/끄기">🔊</button>
+              <button id="btn-edit-photo" class="glass-btn primary-glass">📷 사진 꾸미기</button>
+              <button id="btn-open-admin" class="glass-btn admin-glass" title="보호자 관리자 모드">🔒 관리자</button>
+            </div>
+          </div>
+
+          <div class="hero-bottom-info">
+            <div class="hero-greeting-block">
+              <h1 id="hero-title" class="hero-title">민수의 오늘도 화이팅! 🌟</h1>
+              <p id="hero-subtitle" class="hero-subtitle">오늘의 할일을 완료하고 멋진 선물을 받아보세요!</p>
+            </div>
+            <div class="hero-stats-strip">
+              <div class="stat-pill">
+                <span class="stat-label">보유 별 포인트</span>
+                <strong id="stat-total-points" class="stat-value">0 ⭐</strong>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-label">연속 달성</span>
+                <strong id="stat-streak" class="stat-value">0일 🔥</strong>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-label">오늘 성취도</span>
+                <strong id="stat-today-rate" class="stat-value">0%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- UNIFIED SINGLE-PAGE DASHBOARD (Responsive: 2-col Web/iPad, 1-col iPhone) -->
+    <main class="single-page-grid">
+      <!-- LEFT COLUMN: 요일별 할일 체크리스트 -->
+      <div class="primary-column">
+        <section id="section-tasks" class="card weekday-card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="section-title">📝 요일별 할일</h2>
+              <p id="selected-date-label" class="section-sub">오늘 날짜</p>
+            </div>
+            <div class="header-actions">
+              <span id="day-points-summary" class="points-chip">오늘 +0점</span>
+              <button id="btn-go-today" class="btn btn-soft-sm">오늘로</button>
+            </div>
+          </div>
+
+          <div id="weekday-tabs" class="weekday-tabs" role="tablist" aria-label="요일 선택">
+            <!-- Rendered by JS -->
+          </div>
+
+          <!-- Daily Progress & Threshold Bar -->
+          <div class="progress-box">
+            <div class="progress-meta">
+              <div class="progress-title-row">
+                <strong id="progress-status-text">오늘의 할일을 시작해볼까요?</strong>
+                <span id="progress-fraction" class="progress-fraction">0 / 0 완료</span>
+              </div>
+              <div class="progress-percent-wrap">
+                <span id="progress-percent" class="progress-percent">0%</span>
+              </div>
+            </div>
+            <div class="progress-track">
+              <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+              <div id="threshold-marker" class="threshold-marker" style="left: 70%" title="목표 기준선">
+                <span id="threshold-marker-label" class="threshold-marker-label">기준 70%</span>
+              </div>
+            </div>
+            <div id="threshold-alert-banner" class="threshold-alert-banner"></div>
+          </div>
+
+          <!-- Kid Checklist (Check-only, touch-friendly) -->
+          <div class="checklist-wrap">
+            <h3 id="task-list-heading" class="section-title-sm">할일 목록</h3>
+            <ul id="task-list" class="task-list">
+              <!-- Rendered by JS -->
+            </ul>
+            <div id="task-empty" class="empty-state hidden">
+              <div class="empty-emoji">🎈</div>
+              <p>이 요일에는 등록된 할일이 없어요!</p>
+              <span class="section-sub">보호자 관리자 메뉴에서 할일을 편집할 수 있어요.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- RIGHT COLUMN: 달력 & 주기별 선물 진행률 -->
+      <aside class="secondary-column">
+        <!-- Periodic Gift Progress Card -->
+        <section id="section-gift" class="card gift-card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="section-title">🎁 이번 주기 선물</h2>
+              <p id="gift-cycle-period" class="section-sub">현재 주기: -</p>
+            </div>
+            <span id="gift-status-pill" class="gift-status-pill">도전 중</span>
+          </div>
+
+          <div class="gift-showcase">
+            <div id="gift-emoji-display" class="gift-emoji-display">🎁</div>
+            <div class="gift-info">
+              <span class="gift-label-small">목표 선물</span>
+              <h3 id="gift-name-display" class="gift-name">레고 브릭 세트</h3>
+              <p id="gift-hint-text" class="section-sub"></p>
+            </div>
+          </div>
+
+          <div class="gift-metrics">
+            <div class="gift-metric-row">
+              <div class="metric-head">
+                <span>목표 달성 일수</span>
+                <strong id="gift-days-text">0 / 5일</strong>
+              </div>
+              <div class="mini-track">
+                <div id="gift-days-bar" class="mini-fill mint" style="width: 0%"></div>
+              </div>
+            </div>
+
+            <div class="gift-metric-row">
+              <div class="metric-head">
+                <span>주기 누적 별 포인트</span>
+                <strong id="gift-points-text">0 / 120점</strong>
+              </div>
+              <div class="mini-track">
+                <div id="gift-points-bar" class="mini-fill gold" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="gift-qualified-banner" class="gift-qualified-banner hidden">
+            🎉 선물 받을 자격을 얻었어요! 엄마·아빠에게 보여주세요!
+          </div>
+
+          <!-- Compact Gift History -->
+          <div class="gift-history-inline">
+            <span class="control-label">🏆 받은 선물 기록</span>
+            <ul id="gift-history-list" class="gift-history-list">
+              <!-- Rendered by JS -->
+            </ul>
+          </div>
+        </section>
+
+        <!-- Monthly Calendar Card -->
+        <section id="section-calendar" class="card calendar-card">
+          <div class="card-header-row">
+            <div class="cal-nav">
+              <button id="cal-prev-month" class="icon-btn" aria-label="이전 달">◀</button>
+              <h2 id="cal-month-title" class="section-title">2026년 11월</h2>
+              <button id="cal-next-month" class="icon-btn" aria-label="다음 달">▶</button>
+            </div>
+            <div class="cal-legend">
+              <span class="legend-item"><i class="dot dot-perfect"></i>100%</span>
+              <span class="legend-item"><i class="dot dot-pass"></i>달성</span>
+              <span class="legend-item"><i class="dot dot-fail"></i>미달</span>
+            </div>
+          </div>
+
+          <div class="cal-weekdays-header">
+            <span class="sun">일</span>
+            <span>월</span>
+            <span>화</span>
+            <span>수</span>
+            <span>목</span>
+            <span>금</span>
+            <span class="sat">토</span>
+          </div>
+
+          <div id="calendar-days" class="calendar-days">
+            <!-- Rendered by JS -->
+          </div>
+
+          <div id="cal-day-detail" class="cal-day-detail">
+            <!-- Rendered by JS -->
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Mobile Bottom Quick Jump Bar (visible on mobile screens) -->
+  <nav class="mobile-bottom-bar" aria-label="빠른 이동">
+    <a href="#section-tasks" class="mobile-nav-item active" data-jump="section-tasks">
+      <span>📝</span><small>할일</small>
+    </a>
+    <a href="#section-gift" class="mobile-nav-item" data-jump="section-gift">
+      <span>🎁</span><small>선물</small>
+    </a>
+    <a href="#section-calendar" class="mobile-nav-item" data-jump="section-calendar">
+      <span>📅</span><small>달력</small>
+    </a>
+    <button type="button" id="mobile-btn-photo" class="mobile-nav-item">
+      <span>📷</span><small>사진</small>
+    </button>
+    <button type="button" id="mobile-btn-admin" class="mobile-nav-item">
+      <span>🔒</span><small>관리자</small>
+    </button>
+  </nav>
+
+  <!-- MODAL 1: 메인 사진 편집기 (아이도 사용 가능) -->
+  <div id="photo-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="photo-modal-title">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <h2 id="photo-modal-title">📷 메인 페이지 사진 꾸미기</h2>
+        <button class="icon-btn-sm modal-close" data-close="photo-modal" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="photo-editor-body">
+        <div class="photo-canvas-column">
+          <div class="canvas-stage-wrap">
+            <canvas id="photo-editor-canvas" width="900" height="420"></canvas>
+            <span class="canvas-hint">💡 사진을 드래그해서 위치를 옮길 수 있어요!</span>
+          </div>
+
+          <div class="photo-upload-bar">
+            <label class="btn btn-primary upload-label">
+              📁 내 사진 불러오기
+              <input id="photo-file-input" type="file" accept="image/*" hidden />
+            </label>
+            <button id="btn-photo-reset-transform" class="btn btn-soft">위치/회전 초기화</button>
+          </div>
+
+          <div class="preset-gallery">
+            <span class="control-label">기본 배경 선택</span>
+            <div id="photo-presets" class="preset-buttons"></div>
+          </div>
+        </div>
+
+        <div class="photo-controls-column">
+          <div class="control-group">
+            <label class="control-label" for="edit-hero-title">메인 문구</label>
+            <input id="edit-hero-title" type="text" maxlength="32" placeholder="예: 민수의 오늘도 화이팅! 🌟" />
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="edit-hero-subtitle">보조 응원 문구</label>
+            <input id="edit-hero-subtitle" type="text" maxlength="50" placeholder="예: 오늘의 할일을 완료하고 선물을 받아요!" />
+          </div>
+
+          <div class="control-group">
+            <div class="label-row">
+              <label class="control-label" for="photo-zoom">확대 / 축소</label>
+              <span id="photo-zoom-val">100%</span>
+            </div>
+            <input id="photo-zoom" type="range" min="0.5" max="2.5" step="0.05" value="1" />
+          </div>
+
+          <div class="control-group">
+            <div class="label-row">
+              <label class="control-label" for="photo-rotate">회전</label>
+              <span id="photo-rotate-val">0°</span>
+            </div>
+            <input id="photo-rotate" type="range" min="-180" max="180" step="1" value="0" />
+          </div>
+
+          <div class="control-group">
+            <div class="label-row">
+              <label class="control-label" for="photo-brightness">밝기</label>
+              <span id="photo-brightness-val">100%</span>
+            </div>
+            <input id="photo-brightness" type="range" min="60" max="140" step="2" value="100" />
+          </div>
+
+          <div class="control-group">
+            <span class="control-label">필터</span>
+            <div id="photo-filters" class="chip-grid">
+              <button type="button" class="chip active" data-filter="none">원본</button>
+              <button type="button" class="chip" data-filter="warm">따뜻하게</button>
+              <button type="button" class="chip" data-filter="bright">화사하게</button>
+              <button type="button" class="chip" data-filter="pastel">파스텔</button>
+              <button type="button" class="chip" data-filter="vintage">빈티지</button>
+              <button type="button" class="chip" data-filter="mono">흑백</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <span class="control-label">프레임</span>
+            <div id="photo-frames" class="chip-grid">
+              <button type="button" class="chip active" data-frame="none">없음</button>
+              <button type="button" class="chip" data-frame="rainbow">무지개</button>
+              <button type="button" class="chip" data-frame="stars">별빛</button>
+              <button type="button" class="chip" data-frame="polaroid">화이트</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <span class="control-label">꾸미기 스티커 (터치하여 추가/제거)</span>
+            <div id="photo-stickers" class="sticker-grid">
+              <button type="button" class="sticker-btn" data-sticker="👑">👑</button>
+              <button type="button" class="sticker-btn" data-sticker="⭐">⭐</button>
+              <button type="button" class="sticker-btn" data-sticker="💖">💖</button>
+              <button type="button" class="sticker-btn" data-sticker="🌈">🌈</button>
+              <button type="button" class="sticker-btn" data-sticker="🚀">🚀</button>
+              <button type="button" class="sticker-btn" data-sticker="🦕">🦕</button>
+              <button type="button" class="sticker-btn" data-sticker="🎀">🎀</button>
+              <button type="button" class="sticker-btn" data-sticker="🏆">🏆</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-soft modal-close" data-close="photo-modal">취소</button>
+        <button id="btn-save-photo" class="btn btn-primary">✨ 메인 페이지에 적용하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: 관리자 비밀번호 설정 / 잠금 해제 -->
+  <div id="admin-auth-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="admin-auth-title">
+    <div class="modal-dialog modal-xs">
+      <div class="modal-header">
+        <h2 id="admin-auth-title">🔐 관리자 인증</h2>
+        <button class="icon-btn-sm modal-close" data-close="admin-auth-modal" aria-label="닫기">✕</button>
+      </div>
+
+      <!-- First-time Password Setup -->
+      <form id="admin-setup-form" class="modal-form hidden">
+        <p class="auth-desc">처음 관리자 모드를 여셨네요! 보호자만 사용할 <strong>관리자 비밀번호</strong>를 설정해주세요.</p>
+        <div class="form-group">
+          <label for="setup-pw-1">새 관리자 비밀번호 (4자 이상)</label>
+          <input id="setup-pw-1" type="password" inputmode="text" minlength="4" required placeholder="비밀번호 입력" autocomplete="new-password" />
+        </div>
+        <div class="form-group">
+          <label for="setup-pw-2">비밀번호 확인</label>
+          <input id="setup-pw-2" type="password" inputmode="text" minlength="4" required placeholder="비밀번호 다시 입력" autocomplete="new-password" />
+        </div>
+        <div id="setup-pw-error" class="form-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-soft modal-close" data-close="admin-auth-modal">취소</button>
+          <button type="submit" class="btn btn-primary">비밀번호 설정 & 열기</button>
+        </div>
+      </form>
+
+      <!-- Password Unlock -->
+      <form id="admin-login-form" class="modal-form hidden">
+        <p class="auth-desc">할일 편집, SMS 알림, 감점, 선물 설정은 보호자 비밀번호 입력 후 이용할 수 있습니다.</p>
+        <div class="form-group">
+          <label for="login-pw-input">관리자 비밀번호</label>
+          <input id="login-pw-input" type="password" inputmode="text" required placeholder="비밀번호 입력" autocomplete="current-password" />
+        </div>
+        <div id="login-pw-error" class="form-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-soft modal-close" data-close="admin-auth-modal">취소</button>
+          <button type="submit" class="btn btn-primary">🔓 잠금 해제</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: 보호자 관리자 패널 (Password Protected) -->
+  <div id="admin-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-header admin-modal-header">
+        <div>
+          <h2 id="admin-modal-title">🛠️ 보호자 관리자 설정 (Admin)</h2>
+          <p class="section-sub">닫기 시 자동으로 다시 잠깁니다.</p>
+        </div>
+        <button id="btn-close-admin" class="btn btn-soft-sm">🔒 잠그고 닫기</button>
+      </div>
+
+      <!-- Admin Sub-Navigation -->
+      <div class="admin-nav" role="tablist">
+        <button type="button" class="admin-tab active" data-admin-tab="tasks">📝 할일 편집</button>
+        <button type="button" class="admin-tab" data-admin-tab="gift">🎁 선물 설정</button>
+        <button type="button" class="admin-tab" data-admin-tab="sms">📱 SMS · 감점</button>
+        <button type="button" class="admin-tab" data-admin-tab="security">🔐 비밀번호 · 기기</button>
+      </div>
+
+      <div class="admin-body">
+        <!-- ADMIN TAB 1: 요일별 할일 편집 -->
+        <section id="admin-panel-tasks" class="admin-panel active">
+          <div class="card-header-row">
+            <div>
+              <h3 class="section-title-sm">요일별 할일 편집</h3>
+              <p class="section-sub">요일을 선택하여 할일을 수정·삭제하거나 새 항목을 편집 추가하세요.</p>
+            </div>
+            <button type="button" id="btn-admin-new-task" class="btn btn-primary">+ 이 요일에 항목 추가</button>
+          </div>
+
+          <div id="admin-weekday-pills" class="admin-weekday-pills">
+            <!-- Rendered by JS -->
+          </div>
+
+          <ul id="admin-task-list" class="admin-task-list">
+            <!-- Rendered by JS -->
+          </ul>
+        </section>
+
+        <!-- ADMIN TAB 2: 선물 설정 & 수령 처리 -->
+        <section id="admin-panel-gift" class="admin-panel">
+          <div class="admin-two-col">
+            <form id="admin-gift-form" class="form-section-box">
+              <h3 class="form-section-title">🎁 주기별 선물 목표 설정</h3>
+              <div class="form-group">
+                <label for="gift-name-input">목표 선물 이름</label>
+                <input id="gift-name-input" type="text" required maxlength="30" placeholder="예: 레고 브릭 세트, 아이스크림 쿠폰" />
+              </div>
+
+              <div class="form-group">
+                <label>선물 아이콘</label>
+                <div id="gift-emoji-picker" class="emoji-picker"></div>
+              </div>
+
+              <div class="form-group">
+                <label for="gift-cycle-days">선물 주기</label>
+                <select id="gift-cycle-days">
+                  <option value="7">주간 (7일 주기)</option>
+                  <option value="14">격주 (14일 주기)</option>
+                  <option value="30">월간 (30일 주기)</option>
+                </select>
+              </div>
+
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="gift-req-days">필요 목표 달성 일수</label>
+                  <input id="gift-req-days" type="number" min="1" max="30" value="5" required />
+                </div>
+                <div class="form-group">
+                  <label for="gift-req-points">필요 누적 포인트</label>
+                  <input id="gift-req-points" type="number" min="10" max="2000" step="10" value="120" required />
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary">💾 선물 설정 저장</button>
+            </form>
+
+            <div class="form-section-box">
+              <h3 class="form-section-title">🏆 이번 주기 자격 & 수령 확인</h3>
+              <div id="admin-gift-status-box" class="admin-gift-status-box"></div>
+              <div id="admin-gift-claim-area"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ADMIN TAB 3: SMS 알림 & 감점 규칙 -->
+        <section id="admin-panel-sms" class="admin-panel">
+          <div class="admin-two-col">
+            <form id="sms-settings-form" class="settings-form">
+              <div class="form-section-box">
+                <h3 class="form-section-title">📉 일 단위 성취도 기준 & 감점</h3>
+
+                <div class="form-group">
+                  <div class="label-row">
+                    <label for="setting-threshold">일일 목표 성취도 기준 (Threshold)</label>
+                    <strong id="setting-threshold-val" class="highlight-val">70%</strong>
+                  </div>
+                  <input id="setting-threshold" type="range" min="30" max="100" step="5" value="70" />
+                  <small class="help-text">하루 성취도가 이 기준 미만이면 감점이 적용됩니다.</small>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="setting-penalty">기준 미달 시 감점 (점)</label>
+                    <input id="setting-penalty" type="number" min="0" max="100" step="5" value="15" />
+                  </div>
+                  <div class="form-group">
+                    <label for="setting-cutoff">일일 마감 / SMS 시각</label>
+                    <input id="setting-cutoff" type="time" value="20:00" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-section-box">
+                <h3 class="form-section-title">📱 일일 SMS 알림 설정</h3>
+
+                <div class="toggle-row">
+                  <div>
+                    <strong>미완료 할일 일일 SMS 자동 알림</strong>
+                    <p class="help-text">마감 시각에 미완료 할일이 있으면 SMS를 발송합니다.</p>
+                  </div>
+                  <label class="switch">
+                    <input id="setting-sms-enabled" type="checkbox" checked />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="setting-parent-phone">보호자 휴대폰 번호</label>
+                    <input id="setting-parent-phone" type="tel" placeholder="010-1234-5678" />
+                  </div>
+                  <div class="form-group">
+                    <label for="setting-child-phone">아이 휴대폰 번호 (선택)</label>
+                    <input id="setting-child-phone" type="tel" placeholder="010-9876-5432" />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="setting-webhook">실제 SMS 연동 Webhook URL (선택)</label>
+                  <input id="setting-webhook" type="url" placeholder="https://your-sms-gateway.example.com/send" />
+                  <small class="help-text">비워두면 브라우저 내 SMS 시뮬레이터 + 웹 알림으로 즉시 동작합니다.</small>
+                </div>
+              </div>
+
+              <div class="settings-actions">
+                <button type="submit" class="btn btn-primary">💾 규칙 저장</button>
+                <button type="button" id="btn-test-sms" class="btn btn-warning">📨 SMS 즉시 테스트</button>
+                <button type="button" id="btn-run-daily-check" class="btn btn-outline">⚡ 오늘 마감 정산</button>
+              </div>
+            </form>
+
+            <div class="logs-column">
+              <div class="form-section-box">
+                <div class="card-header-row compact">
+                  <h3 class="form-section-title">📩 일일 SMS 발송 내역</h3>
+                  <button type="button" id="btn-clear-sms-log" class="btn btn-soft-sm">비우기</button>
+                </div>
+                <div id="sms-log-list" class="sms-log-list"></div>
+              </div>
+
+              <div class="form-section-box">
+                <h3 class="form-section-title">📊 일일 감점 & 보너스 내역</h3>
+                <div id="penalty-log-list" class="penalty-log-list"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ADMIN TAB 4: 비밀번호 변경 & 기기/데이터 관리 -->
+        <section id="admin-panel-security" class="admin-panel">
+          <div class="admin-two-col">
+            <form id="admin-change-pw-form" class="form-section-box">
+              <h3 class="form-section-title">🔐 관리자 비밀번호 변경</h3>
+              <div class="form-group">
+                <label for="cur-pw-input">현재 비밀번호</label>
+                <input id="cur-pw-input" type="password" required placeholder="현재 비밀번호" />
+              </div>
+              <div class="form-group">
+                <label for="new-pw-input">새 비밀번호 (4자 이상)</label>
+                <input id="new-pw-input" type="password" minlength="4" required placeholder="새 비밀번호" />
+              </div>
+              <div class="form-group">
+                <label for="new-pw-confirm">새 비밀번호 확인</label>
+                <input id="new-pw-confirm" type="password" minlength="4" required placeholder="새 비밀번호 다시 입력" />
+              </div>
+              <div id="change-pw-msg" class="form-error hidden"></div>
+              <button type="submit" class="btn btn-primary">비밀번호 변경하기</button>
+            </form>
+
+            <div class="logs-column">
+              <div class="form-section-box">
+                <h3 class="form-section-title">📱 아이폰 · 아이패드 앱처럼 사용하기</h3>
+                <p class="help-text">
+                  1. 아이폰/아이패드 <strong>Safari</strong>에서 이 페이지 주소를 엽니다.<br />
+                  2. 하단(또는 상단)의 <strong>공유 버튼(⬆️)</strong>을 누릅니다.<br />
+                  3. <strong>"홈 화면에 추가"</strong>를 선택하면 앱 아이콘으로 전체 화면 실행됩니다!
+                </p>
+              </div>
+
+              <div class="form-section-box">
+                <h3 class="form-section-title">🗂️ 데이터 초기화</h3>
+                <p class="help-text">샘플 데이터를 불러오거나 모든 기록을 지우고 새로 시작할 수 있습니다. (관리자 비밀번호는 유지됩니다)</p>
+                <div class="settings-actions">
+                  <button type="button" id="btn-reset-demo" class="btn btn-soft">🔄 샘플 데이터 복원</button>
+                  <button type="button" id="btn-clear-all" class="btn btn-ghost-danger">🗑️ 내 데이터로 새로 시작</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: 할일 항목 편집 / 추가 (Admin 전용) -->
+  <div id="task-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-header">
+        <h2 id="task-modal-title">할일 편집</h2>
+        <button class="icon-btn-sm modal-close" data-close="task-modal" aria-label="닫기">✕</button>
+      </div>
+      <form id="task-form" class="modal-form">
+        <input id="task-edit-id" type="hidden" />
+        <div class="form-group">
+          <label for="task-title-input">할일 이름</label>
+          <input id="task-title-input" type="text" required maxlength="40" placeholder="예: 책 20분 읽기, 피아노 연습하기" />
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="task-category-input">카테고리</label>
+            <select id="task-category-input">
+              <option value="공부">📚 공부</option>
+              <option value="생활">🛏️ 생활습관</option>
+              <option value="운동">🏃 운동</option>
+              <option value="독서">📖 독서</option>
+              <option value="예체능">🎨 예체능</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-points-input">별 포인트</label>
+            <select id="task-points-input">
+              <option value="5">+5 ⭐</option>
+              <option value="10" selected>+10 ⭐</option>
+              <option value="15">+15 ⭐</option>
+              <option value="20">+20 ⭐</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>아이콘 선택</label>
+          <div id="task-emoji-picker" class="emoji-picker"></div>
+        </div>
+
+        <div class="form-group" id="task-days-group">
+          <div class="label-row">
+            <label>적용할 요일</label>
+            <div class="quick-day-btns">
+              <button type="button" id="btn-days-weekdays" class="text-link-btn">평일</button>
+              <button type="button" id="btn-days-all" class="text-link-btn">매일</button>
+            </div>
+          </div>
+          <div id="task-day-checkboxes" class="day-checkbox-grid"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-soft modal-close" data-close="task-modal">취소</button>
+          <button type="submit" class="btn btn-primary">저장하기</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="photo-editor.js"></script>
+  <script src="sms-service.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
