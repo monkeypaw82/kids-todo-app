@@ -70,54 +70,86 @@
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
 
+  function normalizeDayPoints(tasks) {
+    if (!Array.isArray(tasks) || tasks.length === 0) return tasks;
+    const weights = tasks.map((t) => Math.max(1, Number(t.points) || 1));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+    // Largest-remainder distribution so integer sum is ALWAYS exactly 100
+    const raw = weights.map((w) => (w / totalWeight) * 100);
+    const floors = raw.map((v) => Math.floor(v));
+    let remainder = 100 - floors.reduce((a, b) => a + b, 0);
+
+    const order = raw
+      .map((v, idx) => ({ idx, frac: v - floors[idx] }))
+      .sort((a, b) => b.frac - a.frac);
+
+    for (let i = 0; i < remainder; i++) {
+      floors[order[i % order.length].idx] += 1;
+    }
+
+    tasks.forEach((t, idx) => {
+      t.points = floors[idx];
+    });
+    return tasks;
+  }
+
+  function normalizeAllWeekdays(state) {
+    if (!state || !state.weekdayTasks) return state;
+    Object.keys(state.weekdayTasks).forEach((wd) => {
+      normalizeDayPoints(state.weekdayTasks[wd]);
+    });
+    return state;
+  }
+
   function createDefaultWeekdayTasks() {
     return {
       1: [
-        { id: 't_mon_1', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 10 },
-        { id: 't_mon_2', title: '학교 숙제 30분 집중하기', emoji: '✏️', category: '공부', points: 15 },
-        { id: 't_mon_3', title: '피아노 연습 20분', emoji: '🎹', category: '예체능', points: 15 },
-        { id: 't_mon_4', title: '동화책 20분 읽기', emoji: '📖', category: '독서', points: 10 },
-        { id: 't_mon_5', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 5 }
+        { id: 't_mon_1', groupId: 'g_bed', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 20 },
+        { id: 't_mon_2', groupId: 'g_hw', title: '학교 숙제 30분 집중하기', emoji: '✏️', category: '공부', points: 25 },
+        { id: 't_mon_3', groupId: 'g_piano', title: '피아노 연습 20분', emoji: '🎹', category: '예체능', points: 20 },
+        { id: 't_mon_4', groupId: 'g_book', title: '동화책 20분 읽기', emoji: '📖', category: '독서', points: 20 },
+        { id: 't_mon_5', groupId: 'g_brush', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 15 }
       ],
       2: [
-        { id: 't_tue_1', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 10 },
-        { id: 't_tue_2', title: '수학 문제집 2쪽 풀기', emoji: '🔢', category: '공부', points: 15 },
-        { id: 't_tue_3', title: '줄넘기 100개 도전', emoji: '🏃', category: '운동', points: 15 },
-        { id: 't_tue_4', title: '장난감 제자리에 정리하기', emoji: '🧸', category: '생활', points: 10 },
-        { id: 't_tue_5', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 5 }
+        { id: 't_tue_1', groupId: 'g_bed', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 20 },
+        { id: 't_tue_2', groupId: 'g_math', title: '수학 문제집 2쪽 풀기', emoji: '🔢', category: '공부', points: 25 },
+        { id: 't_tue_3', groupId: 'g_jump', title: '줄넘기 100개 도전', emoji: '🏃', category: '운동', points: 20 },
+        { id: 't_tue_4', groupId: 'g_toy', title: '장난감 제자리에 정리하기', emoji: '🧸', category: '생활', points: 20 },
+        { id: 't_tue_5', groupId: 'g_brush', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 15 }
       ],
       3: [
-        { id: 't_wed_1', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 10 },
-        { id: 't_wed_2', title: '영어 단어 5개 소리내어 읽기', emoji: '🔤', category: '공부', points: 15 },
-        { id: 't_wed_3', title: '그림 그리기 / 색칠 놀이', emoji: '🎨', category: '예체능', points: 10 },
-        { id: 't_wed_4', title: '동화책 20분 읽기', emoji: '📖', category: '독서', points: 10 },
-        { id: 't_wed_5', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 5 }
+        { id: 't_wed_1', groupId: 'g_bed', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 20 },
+        { id: 't_wed_2', groupId: 'g_eng', title: '영어 단어 5개 소리내어 읽기', emoji: '🔤', category: '공부', points: 25 },
+        { id: 't_wed_3', groupId: 'g_art', title: '그림 그리기 / 색칠 놀이', emoji: '🎨', category: '예체능', points: 20 },
+        { id: 't_wed_4', groupId: 'g_book', title: '동화책 20분 읽기', emoji: '📖', category: '독서', points: 20 },
+        { id: 't_wed_5', groupId: 'g_brush', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 15 }
       ],
       4: [
-        { id: 't_thu_1', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 10 },
-        { id: 't_thu_2', title: '받아쓰기 / 글씨 바르게 쓰기', emoji: '📝', category: '공부', points: 15 },
-        { id: 't_thu_3', title: '태권도 / 스트레칭 15분', emoji: '🥋', category: '운동', points: 15 },
-        { id: 't_thu_4', title: '내일 준비물 가방 챙기기', emoji: '🎒', category: '생활', points: 10 },
-        { id: 't_thu_5', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 5 }
+        { id: 't_thu_1', groupId: 'g_bed', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 20 },
+        { id: 't_thu_2', groupId: 'g_write', title: '받아쓰기 / 글씨 바르게 쓰기', emoji: '📝', category: '공부', points: 25 },
+        { id: 't_thu_3', groupId: 'g_tkd', title: '태권도 / 스트레칭 15분', emoji: '🥋', category: '운동', points: 20 },
+        { id: 't_thu_4', groupId: 'g_bag', title: '내일 준비물 가방 챙기기', emoji: '🎒', category: '생활', points: 20 },
+        { id: 't_thu_5', groupId: 'g_brush', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 15 }
       ],
       5: [
-        { id: 't_fri_1', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 10 },
-        { id: 't_fri_2', title: '한 주 공부 복습하기', emoji: '📚', category: '공부', points: 15 },
-        { id: 't_fri_3', title: '피아노 연습 20분', emoji: '🎹', category: '예체능', points: 15 },
-        { id: 't_fri_4', title: '책상 위 깨끗이 치우기', emoji: '🧹', category: '생활', points: 10 },
-        { id: 't_fri_5', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 5 }
+        { id: 't_fri_1', groupId: 'g_bed', title: '아침에 이불 스스로 개기', emoji: '🛏️', category: '생활', points: 20 },
+        { id: 't_fri_2', groupId: 'g_review', title: '한 주 공부 복습하기', emoji: '📚', category: '공부', points: 25 },
+        { id: 't_fri_3', groupId: 'g_piano', title: '피아노 연습 20분', emoji: '🎹', category: '예체능', points: 20 },
+        { id: 't_fri_4', groupId: 'g_desk', title: '책상 위 깨끗이 치우기', emoji: '🧹', category: '생활', points: 20 },
+        { id: 't_fri_5', groupId: 'g_brush', title: '저녁 양치질 꼼꼼히 하기', emoji: '🪥', category: '생활', points: 15 }
       ],
       6: [
-        { id: 't_sat_1', title: '아침 스스로 일어나 세수하기', emoji: '🧼', category: '생활', points: 10 },
-        { id: 't_sat_2', title: '가족과 밖에서 신나게 뛰어놀기', emoji: '⚽', category: '운동', points: 15 },
-        { id: 't_sat_3', title: '만화책/동화책 1권 완독하기', emoji: '📖', category: '독서', points: 15 },
-        { id: 't_sat_4', title: '엄마 아빠 집안일 1가지 돕기', emoji: '💛', category: '생활', points: 15 }
+        { id: 't_sat_1', groupId: 'g_wash', title: '아침 스스로 일어나 세수하기', emoji: '🧼', category: '생활', points: 25 },
+        { id: 't_sat_2', groupId: 'g_play', title: '가족과 밖에서 신나게 뛰어놀기', emoji: '⚽', category: '운동', points: 25 },
+        { id: 't_sat_3', groupId: 'g_readwk', title: '만화책/동화책 1권 완독하기', emoji: '📖', category: '독서', points: 25 },
+        { id: 't_sat_4', groupId: 'g_help', title: '엄마 아빠 집안일 1가지 돕기', emoji: '💛', category: '생활', points: 25 }
       ],
       0: [
-        { id: 't_sun_1', title: '아침 스스로 일어나 세수하기', emoji: '🧼', category: '생활', points: 10 },
-        { id: 't_sun_2', title: '일기 한 편 쓰기', emoji: '📓', category: '공부', points: 15 },
-        { id: 't_sun_3', title: '월요일 학교 가방 미리 챙기기', emoji: '🎒', category: '생활', points: 10 },
-        { id: 't_sun_4', title: '일찍 잠자리에 들기', emoji: '🌙', category: '생활', points: 10 }
+        { id: 't_sun_1', groupId: 'g_wash', title: '아침 스스로 일어나 세수하기', emoji: '🧼', category: '생활', points: 25 },
+        { id: 't_sun_2', groupId: 'g_diary', title: '일기 한 편 쓰기', emoji: '📓', category: '공부', points: 25 },
+        { id: 't_sun_3', groupId: 'g_monbag', title: '월요일 학교 가방 미리 챙기기', emoji: '🎒', category: '생활', points: 25 },
+        { id: 't_sun_4', groupId: 'g_sleep', title: '일찍 잠자리에 들기', emoji: '🌙', category: '생활', points: 25 }
       ]
     };
   }
@@ -157,12 +189,13 @@
         webhookUrl: ''
       },
       giftConfig: {
-        name: '레고 브릭 세트',
-        emoji: '🧱',
         cycleDays: 7,
-        requiredDays: 5,
-        requiredPoints: 120,
-        anchorDate: addDays(today, -5)
+        anchorDate: addDays(today, -5),
+        tiers: [
+          { id: 'tier_1', points: 350, name: '아이스크림 쿠폰', emoji: '🍦' },
+          { id: 'tier_2', points: 500, name: '포켓몬 카드 팩', emoji: '🃏' },
+          { id: 'tier_3', points: 600, name: '레고 브릭 세트', emoji: '🧱' }
+        ]
       },
       giftClaims: [],
       smsLogs: [],
@@ -256,7 +289,21 @@
         return demo;
       }
       const parsed = JSON.parse(raw);
-      return Object.assign(createEmptyState(), parsed);
+      const merged = normalizeAllWeekdays(Object.assign(createEmptyState(), parsed));
+      // Migrate legacy single-gift config to tiers array if needed
+      if (!merged.giftConfig) merged.giftConfig = createEmptyState().giftConfig;
+      if (!Array.isArray(merged.giftConfig.tiers) || merged.giftConfig.tiers.length === 0) {
+        merged.giftConfig.tiers = [
+          {
+            id: uid('tier'),
+            points: Number(merged.giftConfig.requiredPoints || 500),
+            name: merged.giftConfig.name || '레고 브릭 세트',
+            emoji: merged.giftConfig.emoji || '🎁'
+          }
+        ];
+      }
+      merged.giftConfig.tiers.sort((a, b) => Number(a.points) - Number(b.points));
+      return merged;
     } catch (e) {
       console.warn('Failed to load state, resetting to demo:', e);
       return createDemoState();
@@ -283,10 +330,11 @@
     const validCompletedIds = rec.completedIds.filter((id) => tasks.some((t) => t.id === id));
     const totalCount = tasks.length;
     const doneCount = validCompletedIds.length;
-    const rate = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+    const totalPossiblePoints = tasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
     const earnedPoints = tasks
       .filter((t) => validCompletedIds.includes(t.id))
       .reduce((sum, t) => sum + Number(t.points || 0), 0);
+    const rate = totalPossiblePoints > 0 ? Math.round((earnedPoints / totalPossiblePoints) * 100) : 0;
     const penaltyPoints = Number(rec.penaltyApplied || 0);
     const threshold = Number(state.settings.threshold || 70);
     const passed = totalCount > 0 && rate >= threshold;
@@ -343,7 +391,7 @@
 
   function getCurrentGiftCycle(state, refDateStr) {
     const ref = refDateStr || getTodayStr();
-    const cfg = state.giftConfig;
+    const cfg = state.giftConfig || {};
     const cycleDays = Math.max(1, Number(cfg.cycleDays || 7));
     const anchor = cfg.anchorDate || ref;
 
@@ -363,10 +411,28 @@
       cyclePoints += sum.netPoints;
     }
 
-    const reqDays = Math.max(1, Number(cfg.requiredDays || 5));
-    const reqPoints = Math.max(1, Number(cfg.requiredPoints || 100));
-    const alreadyClaimed = state.giftClaims.some((c) => c.cycleKey === cycleKey);
-    const qualified = passedDays >= reqDays && cyclePoints >= reqPoints;
+    const safePoints = Math.max(0, cyclePoints);
+    const tiers = (Array.isArray(cfg.tiers) ? cfg.tiers : [])
+      .slice()
+      .sort((a, b) => Number(a.points) - Number(b.points))
+      .map((tier) => {
+        const targetPoints = Math.max(1, Number(tier.points || 100));
+        const claimKey = `${cycleKey}::${tier.id}`;
+        const claimed = state.giftClaims.some((c) => c.claimKey === claimKey);
+        const qualified = safePoints >= targetPoints;
+        const pct = Math.min(100, Math.round((safePoints / targetPoints) * 100));
+        return Object.assign({}, tier, {
+          targetPoints,
+          claimKey,
+          claimed,
+          qualified,
+          pct,
+          remainingPoints: Math.max(0, targetPoints - safePoints)
+        });
+      });
+
+    const maxTarget = tiers.length ? tiers[tiers.length - 1].targetPoints : 100;
+    const anyQualified = tiers.some((t) => t.qualified && !t.claimed);
 
     return {
       cycleKey,
@@ -374,11 +440,10 @@
       cycleEnd,
       cycleDays,
       passedDays,
-      cyclePoints: Math.max(0, cyclePoints),
-      reqDays,
-      reqPoints,
-      qualified,
-      alreadyClaimed
+      cyclePoints: safePoints,
+      maxTarget,
+      tiers,
+      anyQualified
     };
   }
 
@@ -394,6 +459,8 @@
     formatKoreanDate,
     uid,
     hashPassword,
+    normalizeDayPoints,
+    normalizeAllWeekdays,
     createEmptyState,
     createDemoState,
     loadState,

@@ -18,6 +18,18 @@
 <body>
   <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
 
+  <!-- 100-Point Big Celebration Overlay -->
+  <div id="celebration-overlay" class="celebration-overlay hidden" role="dialog" aria-modal="true" aria-label="100점 만점 축하">
+    <div class="celebration-card">
+      <div class="celebration-sparkles">✨🎉🌟🎆✨</div>
+      <div class="celebration-trophy">🏆</div>
+      <div class="celebration-score-badge">100점 만점!</div>
+      <h2 id="celebration-title" class="celebration-title">와아! 오늘 할일 완벽 성공!!</h2>
+      <p id="celebration-sub" class="celebration-sub">오늘의 할일을 모두 끝냈어요! 정말 최고예요! 🌟</p>
+      <button type="button" id="btn-close-celebration" class="btn btn-warning celebration-btn">야호! 최고예요! ✨</button>
+    </div>
+  </div>
+
   <!-- SMS Push Toast Preview -->
   <div id="sms-toast" class="sms-toast hidden" role="alert" aria-live="polite">
     <div class="sms-toast-header">
@@ -125,45 +137,18 @@
 
       <!-- RIGHT COLUMN: 달력 & 주기별 선물 진행률 -->
       <aside class="secondary-column">
-        <!-- Periodic Gift Progress Card -->
+        <!-- Periodic Gift Progress Card (Score-based Multi-Tier) -->
         <section id="section-gift" class="card gift-card">
           <div class="card-header-row">
             <div>
               <h2 class="section-title">🎁 이번 주기 선물</h2>
               <p id="gift-cycle-period" class="section-sub">현재 주기: -</p>
             </div>
-            <span id="gift-status-pill" class="gift-status-pill">도전 중</span>
+            <span id="gift-cycle-score-pill" class="gift-status-pill qualified">0점</span>
           </div>
 
-          <div class="gift-showcase">
-            <div id="gift-emoji-display" class="gift-emoji-display">🎁</div>
-            <div class="gift-info">
-              <span class="gift-label-small">목표 선물</span>
-              <h3 id="gift-name-display" class="gift-name">레고 브릭 세트</h3>
-              <p id="gift-hint-text" class="section-sub"></p>
-            </div>
-          </div>
-
-          <div class="gift-metrics">
-            <div class="gift-metric-row">
-              <div class="metric-head">
-                <span>목표 달성 일수</span>
-                <strong id="gift-days-text">0 / 5일</strong>
-              </div>
-              <div class="mini-track">
-                <div id="gift-days-bar" class="mini-fill mint" style="width: 0%"></div>
-              </div>
-            </div>
-
-            <div class="gift-metric-row">
-              <div class="metric-head">
-                <span>주기 누적 별 포인트</span>
-                <strong id="gift-points-text">0 / 120점</strong>
-              </div>
-              <div class="mini-track">
-                <div id="gift-points-bar" class="mini-fill gold" style="width: 0%"></div>
-              </div>
-            </div>
+          <div id="gift-tiers-list" class="gift-tiers-list">
+            <!-- Rendered by JS -->
           </div>
 
           <div id="gift-qualified-banner" class="gift-qualified-banner hidden">
@@ -410,13 +395,21 @@
           <div class="card-header-row">
             <div>
               <h3 class="section-title-sm">요일별 할일 편집</h3>
-              <p class="section-sub">요일을 선택하여 할일을 수정·삭제하거나 새 항목을 편집 추가하세요.</p>
+              <p class="section-sub">할일을 편집할 때 여러 요일을 멀티 선택할 수 있으며, 하루 총점은 항상 100점으로 고정됩니다.</p>
             </div>
-            <button type="button" id="btn-admin-new-task" class="btn btn-primary">+ 이 요일에 항목 추가</button>
+            <div class="header-actions">
+              <button type="button" id="btn-admin-equalize" class="btn btn-soft-sm">⚖️ 100점 균등 분배</button>
+              <button type="button" id="btn-admin-new-task" class="btn btn-primary">+ 할일 등록</button>
+            </div>
           </div>
 
           <div id="admin-weekday-pills" class="admin-weekday-pills">
             <!-- Rendered by JS -->
+          </div>
+
+          <div class="admin-total-bar">
+            <span id="admin-day-total-label">선택 요일 하루 총점</span>
+            <strong id="admin-day-total-badge" class="points-chip">100 / 100점 고정</strong>
           </div>
 
           <ul id="admin-task-list" class="admin-task-list">
@@ -427,45 +420,54 @@
         <!-- ADMIN TAB 2: 선물 설정 & 수령 처리 -->
         <section id="admin-panel-gift" class="admin-panel">
           <div class="admin-two-col">
-            <form id="admin-gift-form" class="form-section-box">
-              <h3 class="form-section-title">🎁 주기별 선물 목표 설정</h3>
-              <div class="form-group">
-                <label for="gift-name-input">목표 선물 이름</label>
-                <input id="gift-name-input" type="text" required maxlength="30" placeholder="예: 레고 브릭 세트, 아이스크림 쿠폰" />
-              </div>
-
-              <div class="form-group">
-                <label>선물 아이콘</label>
-                <div id="gift-emoji-picker" class="emoji-picker"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="gift-cycle-days">선물 주기</label>
-                <select id="gift-cycle-days">
-                  <option value="7">주간 (7일 주기)</option>
-                  <option value="14">격주 (14일 주기)</option>
-                  <option value="30">월간 (30일 주기)</option>
-                </select>
-              </div>
-
-              <div class="form-row-2">
+            <div class="logs-column">
+              <!-- Custom Cycle Days Form -->
+              <form id="admin-cycle-form" class="form-section-box">
+                <h3 class="form-section-title">🗓️ 선물 주기 직접 설정</h3>
                 <div class="form-group">
-                  <label for="gift-req-days">필요 목표 달성 일수</label>
-                  <input id="gift-req-days" type="number" min="1" max="30" value="5" required />
+                  <div class="label-row">
+                    <label for="gift-cycle-days">주기 일수 (1~90일 자유 입력)</label>
+                    <div class="quick-day-btns">
+                      <button type="button" class="text-link-btn cycle-preset-btn" data-days="7">7일</button>
+                      <button type="button" class="text-link-btn cycle-preset-btn" data-days="10">10일</button>
+                      <button type="button" class="text-link-btn cycle-preset-btn" data-days="14">14일</button>
+                      <button type="button" class="text-link-btn cycle-preset-btn" data-days="30">30일</button>
+                    </div>
+                  </div>
+                  <input id="gift-cycle-days" type="number" min="1" max="90" value="7" required />
+                  <small class="help-text">예: 7일 주기 600점, 10일 주기 800점 등 원하는 기간으로 자유롭게 설정하세요.</small>
+                </div>
+                <button type="submit" class="btn btn-primary">💾 주기 일수 저장</button>
+              </form>
+
+              <!-- Add Score-Based Gift Tier Form -->
+              <form id="admin-tier-add-form" class="form-section-box">
+                <h3 class="form-section-title">➕ 목표 점수별 선물 추가</h3>
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="tier-points-input">목표 점수 (점)</label>
+                    <input id="tier-points-input" type="number" min="10" max="9000" step="10" value="600" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="tier-name-input">선물 이름</label>
+                    <input id="tier-name-input" type="text" maxlength="30" required placeholder="예: 레고 세트, 아이스크림" />
+                  </div>
                 </div>
                 <div class="form-group">
-                  <label for="gift-req-points">필요 누적 포인트</label>
-                  <input id="gift-req-points" type="number" min="10" max="2000" step="10" value="120" required />
+                  <label>선물 아이콘</label>
+                  <div id="gift-emoji-picker" class="emoji-picker"></div>
                 </div>
-              </div>
+                <button type="submit" class="btn btn-primary">+ 목표 점수 선물 추가</button>
+              </form>
+            </div>
 
-              <button type="submit" class="btn btn-primary">💾 선물 설정 저장</button>
-            </form>
-
+            <!-- Configured Tiers + Claim Management -->
             <div class="form-section-box">
-              <h3 class="form-section-title">🏆 이번 주기 자격 & 수령 확인</h3>
+              <h3 class="form-section-title">🏆 목표 점수별 선물 목록 & 수령 확인</h3>
               <div id="admin-gift-status-box" class="admin-gift-status-box"></div>
-              <div id="admin-gift-claim-area"></div>
+              <ul id="admin-gift-tiers-list" class="admin-task-list">
+                <!-- Rendered by JS -->
+              </ul>
             </div>
           </div>
         </section>
@@ -626,15 +628,11 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="task-points-input">별 포인트</label>
-            <select id="task-points-input">
-              <option value="5">+5 ⭐</option>
-              <option value="10" selected>+10 ⭐</option>
-              <option value="15">+15 ⭐</option>
-              <option value="20">+20 ⭐</option>
-            </select>
+            <label for="task-points-input">배점 비중 (1~100점)</label>
+            <input id="task-points-input" type="number" min="1" max="100" value="20" required />
           </div>
         </div>
+        <small class="help-text">💡 저장 시 선택한 각 요일의 하루 총점이 자동으로 <strong>100점</strong>에 맞춰 배분됩니다.</small>
 
         <div class="form-group">
           <label>아이콘 선택</label>
@@ -643,9 +641,10 @@
 
         <div class="form-group" id="task-days-group">
           <div class="label-row">
-            <label>적용할 요일</label>
+            <label>적용할 요일 (멀티 선택)</label>
             <div class="quick-day-btns">
               <button type="button" id="btn-days-weekdays" class="text-link-btn">평일</button>
+              <button type="button" id="btn-days-weekend" class="text-link-btn">주말</button>
               <button type="button" id="btn-days-all" class="text-link-btn">매일</button>
             </div>
           </div>

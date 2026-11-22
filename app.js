@@ -13,7 +13,7 @@
   // Admin state
   let isAdminUnlocked = false;
   let adminSelectedWeekday = TodoData.getWeekdayIndex(selectedDate);
-  let selectedGiftEmoji = state.giftConfig.emoji || '🎁';
+  let selectedGiftEmoji = '🎁';
 
   // Photo editor transient state
   let editorConfig = null;
@@ -51,6 +51,58 @@
     } catch (e) {
       // Ignore audio errors
     }
+  }
+
+  // Cheerful Nintendo-style 100-point victory fanfare
+  function playFanfare100() {
+    if (!state.soundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+
+      const melody = [
+        { freq: 523.25, t: 0.0, d: 0.14, type: 'triangle' },  // C5
+        { freq: 659.25, t: 0.12, d: 0.14, type: 'triangle' }, // E5
+        { freq: 783.99, t: 0.24, d: 0.14, type: 'triangle' }, // G5
+        { freq: 1046.5, t: 0.38, d: 0.45, type: 'triangle' }, // C6
+        { freq: 783.99, t: 0.56, d: 0.16, type: 'sine' },     // G5
+        { freq: 1046.5, t: 0.72, d: 0.65, type: 'triangle' }, // C6
+        { freq: 1318.5, t: 0.72, d: 0.65, type: 'sine' },     // E6 harmony
+        { freq: 1567.98, t: 0.72, d: 0.65, type: 'sine' }     // G6 harmony
+      ];
+
+      melody.forEach((n) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = n.type;
+        osc.frequency.setValueAtTime(n.freq, now + n.t);
+        gain.gain.setValueAtTime(0.001, now + n.t);
+        gain.gain.linearRampToValueAtTime(0.12, now + n.t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.t);
+        osc.stop(now + n.t + n.d + 0.04);
+      });
+    } catch (e) {
+      // Ignore audio errors
+    }
+  }
+
+  function showBigCelebration100() {
+    playFanfare100();
+    const overlay = document.getElementById('celebration-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+
+    // Multi-wave fireworks confetti!
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    launchConfetti(w * 0.5, h * 0.35, 55);
+    setTimeout(() => launchConfetti(w * 0.22, h * 0.3, 40), 260);
+    setTimeout(() => launchConfetti(w * 0.78, h * 0.3, 40), 520);
+    setTimeout(() => launchConfetti(w * 0.5, h * 0.22, 48), 820);
   }
 
   function launchConfetti(originX, originY, count) {
@@ -191,8 +243,8 @@
     const ptsSummaryEl = document.getElementById('day-points-summary');
     ptsSummaryEl.textContent =
       summary.penaltyPoints > 0
-        ? `+${summary.earnedPoints} / -${summary.penaltyPoints}점`
-        : `오늘 +${summary.earnedPoints}점`;
+        ? `+${summary.earnedPoints}/100점 (감점 -${summary.penaltyPoints})`
+        : `오늘 ${summary.earnedPoints} / 100점`;
 
     // Kid Checklist (check-only, tap anywhere on row)
     const listEl = document.getElementById('task-list');
@@ -324,42 +376,50 @@
       document.getElementById('section-tasks').scrollIntoView({ behavior: 'smooth' });
     });
 
-    // Kid Gift Progress Card
+    // Kid Gift Progress Card (Score-based Multi-Tier)
     const cycle = TodoData.getCurrentGiftCycle(state, today);
-    const cfg = state.giftConfig;
     document.getElementById('gift-cycle-period').textContent = `${cycle.cycleDays}일 주기 (${cycle.cycleStart} ~ ${cycle.cycleEnd})`;
-    document.getElementById('gift-emoji-display').textContent = cfg.emoji || '🎁';
-    document.getElementById('gift-name-display').textContent = cfg.name || '선물';
+    document.getElementById('gift-cycle-score-pill').textContent = `이번 주기 ${cycle.cyclePoints}점 ⭐`;
 
-    const pill = document.getElementById('gift-status-pill');
-    const qualBanner = document.getElementById('gift-qualified-banner');
-    const hintText = document.getElementById('gift-hint-text');
+    const tiersListEl = document.getElementById('gift-tiers-list');
+    tiersListEl.innerHTML = '';
 
-    if (cycle.alreadyClaimed) {
-      pill.textContent = '🎉 수령 완료!';
-      pill.className = 'gift-status-pill qualified';
-      qualBanner.classList.add('hidden');
-      hintText.textContent = '이번 주기 선물을 이미 받았어요! 다음 주기도 화이팅!';
-    } else if (cycle.qualified) {
-      pill.textContent = '✨ 자격 획득!';
-      pill.className = 'gift-status-pill qualified';
-      qualBanner.classList.remove('hidden');
-      hintText.textContent = '조건을 모두 달성했어요!';
+    if (cycle.tiers.length === 0) {
+      tiersListEl.innerHTML = '<div class="section-sub">관리자 메뉴에서 목표 점수별 선물을 등록해주세요!</div>';
     } else {
-      pill.textContent = '도전 중';
-      pill.className = 'gift-status-pill';
-      qualBanner.classList.add('hidden');
-      const remDays = Math.max(0, cycle.reqDays - cycle.passedDays);
-      const remPts = Math.max(0, cycle.reqPoints - cycle.cyclePoints);
-      hintText.textContent = `앞으로 ${remDays}일 달성 · ${remPts}점 더 모으면 자격 획득!`;
+      cycle.tiers.forEach((tier) => {
+        const card = document.createElement('div');
+        card.className = `gift-tier-card${tier.claimed ? ' claimed' : tier.qualified ? ' qualified' : ''}`;
+        const badgeText = tier.claimed
+          ? '🎉 수령 완료'
+          : tier.qualified
+          ? '✨ 자격 획득!'
+          : `${tier.remainingPoints}점 남음`;
+        const badgeClass = tier.claimed ? 'done' : tier.qualified ? 'ready' : '';
+
+        card.innerHTML = `
+          <div class="gift-tier-top">
+            <div class="gift-tier-emoji">${tier.emoji || '🎁'}</div>
+            <div class="gift-tier-info">
+              <div class="gift-tier-name">${escapeHtml(tier.name)}</div>
+              <div class="gift-tier-target">목표 ${tier.targetPoints}점 (${cycle.cyclePoints} / ${tier.targetPoints}점)</div>
+            </div>
+            <span class="gift-tier-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="mini-track">
+            <div class="mini-fill ${tier.qualified ? 'mint' : 'gold'}" style="width: ${tier.pct}%"></div>
+          </div>
+        `;
+        tiersListEl.appendChild(card);
+      });
     }
 
-    const daysPct = Math.min(100, Math.round((cycle.passedDays / cycle.reqDays) * 100));
-    const ptsPct = Math.min(100, Math.round((cycle.cyclePoints / cycle.reqPoints) * 100));
-    document.getElementById('gift-days-text').textContent = `${cycle.passedDays} / ${cycle.reqDays}일`;
-    document.getElementById('gift-days-bar').style.width = `${daysPct}%`;
-    document.getElementById('gift-points-text').textContent = `${cycle.cyclePoints} / ${cycle.reqPoints}점`;
-    document.getElementById('gift-points-bar').style.width = `${ptsPct}%`;
+    const qualBanner = document.getElementById('gift-qualified-banner');
+    if (cycle.anyQualified) {
+      qualBanner.classList.remove('hidden');
+    } else {
+      qualBanner.classList.add('hidden');
+    }
 
     const histEl = document.getElementById('gift-history-list');
     histEl.innerHTML = '';
@@ -397,6 +457,12 @@
 
     const listEl = document.getElementById('admin-task-list');
     const tasks = state.weekdayTasks[adminSelectedWeekday] || [];
+    const totalPts = tasks.reduce((sum, t) => sum + Number(t.points || 0), 0);
+    const totalLbl = document.getElementById('admin-day-total-label');
+    const totalBadge = document.getElementById('admin-day-total-badge');
+    if (totalLbl) totalLbl.textContent = `${TodoData.WEEKDAYS_KO[adminSelectedWeekday]}요일 하루 총점 (${tasks.length}개 항목)`;
+    if (totalBadge) totalBadge.textContent = tasks.length ? `${totalPts} / 100점 고정` : '0점 (할일 없음)';
+
     listEl.innerHTML = '';
 
     if (tasks.length === 0) {
@@ -413,7 +479,7 @@
           <div class="task-title">${escapeHtml(task.title)}</div>
           <div class="task-meta">
             <span class="cat-badge" data-cat="${escapeHtml(task.category)}">${escapeHtml(task.category)}</span>
-            <span class="pts-badge">+${task.points} ⭐</span>
+            <span class="pts-badge">${task.points}점 ⭐</span>
           </div>
         </div>
         <div class="admin-task-actions">
@@ -427,8 +493,9 @@
       });
 
       li.querySelector('.btn-admin-del').addEventListener('click', () => {
-        if (confirm(`"${task.title}" 항목을 ${TodoData.WEEKDAYS_KO[adminSelectedWeekday]}요일에서 삭제할까요?`)) {
+        if (confirm(`"${task.title}" 항목을 ${TodoData.WEEKDAYS_KO[adminSelectedWeekday]}요일에서 삭제할까요? (남은 항목은 총점 100점으로 자동 재계산됩니다)`)) {
           state.weekdayTasks[adminSelectedWeekday] = tasks.filter((t) => t.id !== task.id);
+          TodoData.normalizeDayPoints(state.weekdayTasks[adminSelectedWeekday]);
           TodoData.saveState(state);
           renderAll();
         }
@@ -440,11 +507,7 @@
 
   function renderAdminGift() {
     const cfg = state.giftConfig;
-    document.getElementById('gift-name-input').value = cfg.name || '';
     document.getElementById('gift-cycle-days').value = String(cfg.cycleDays || 7);
-    document.getElementById('gift-req-days').value = String(cfg.requiredDays || 5);
-    document.getElementById('gift-req-points').value = String(cfg.requiredPoints || 120);
-    selectedGiftEmoji = cfg.emoji || '🎁';
 
     const ep = document.getElementById('gift-emoji-picker');
     ep.innerHTML = '';
@@ -463,40 +526,73 @@
     const today = TodoData.getTodayStr();
     const cycle = TodoData.getCurrentGiftCycle(state, today);
     document.getElementById('admin-gift-status-box').innerHTML = `
-      <div><strong>현재 주기:</strong> ${cycle.cycleStart} ~ ${cycle.cycleEnd} (${cycle.cycleDays}일)</div>
-      <div><strong>달성 일수:</strong> ${cycle.passedDays} / ${cycle.reqDays}일</div>
-      <div><strong>주기 순포인트:</strong> ${cycle.cyclePoints} / ${cycle.reqPoints}점</div>
-      <div><strong>상태:</strong> ${
-        cycle.alreadyClaimed
-          ? '🎉 수령 완료 처리됨'
-          : cycle.qualified
-          ? '✨ 선물 받을 자격 충족!'
-          : '진행 중'
-      }</div>
+      <div><strong>현재 주기:</strong> ${cycle.cycleStart} ~ ${cycle.cycleEnd} (${cycle.cycleDays}일 주기)</div>
+      <div><strong>이번 주기 누적 순포인트:</strong> <span style="color:var(--primary);font-weight:800;">${cycle.cyclePoints}점</span> (목표 달성 ${cycle.passedDays}일)</div>
     `;
 
-    const claimArea = document.getElementById('admin-gift-claim-area');
-    if (cycle.alreadyClaimed) {
-      claimArea.innerHTML = '<p class="help-text">이번 주기 선물 수령 기록이 이미 완료되었습니다.</p>';
-    } else if (cycle.qualified) {
-      claimArea.innerHTML = `<button type="button" id="btn-admin-claim-gift" class="btn btn-warning" style="width:100%;">🎁 선물 수령 완료 기록하기</button>`;
-      document.getElementById('btn-admin-claim-gift').addEventListener('click', () => {
-        state.giftClaims.unshift({
-          id: TodoData.uid('gift'),
-          cycleKey: cycle.cycleKey,
-          claimedAt: today,
-          cycleLabel: `${cycle.cycleStart} ~ ${cycle.cycleEnd}`,
-          giftName: cfg.name,
-          giftEmoji: cfg.emoji || '🎁'
-        });
-        TodoData.saveState(state);
-        playChime('celebrate');
-        launchConfetti(window.innerWidth / 2, window.innerHeight / 2, 50);
-        renderAll();
-      });
-    } else {
-      claimArea.innerHTML = '<p class="help-text">아이가 목표 일수와 포인트를 모두 충족하면 이곳에서 선물 수령 완료 처리를 할 수 있습니다.</p>';
+    const listEl = document.getElementById('admin-gift-tiers-list');
+    listEl.innerHTML = '';
+    if (cycle.tiers.length === 0) {
+      listEl.innerHTML = '<li class="section-sub" style="padding:12px;">등록된 목표 점수별 선물이 없습니다. 좌측에서 추가해주세요.</li>';
+      return;
     }
+
+    cycle.tiers.forEach((tier) => {
+      const li = document.createElement('li');
+      li.className = 'admin-task-row';
+      li.innerHTML = `
+        <div class="task-emoji">${tier.emoji || '🎁'}</div>
+        <div class="task-content">
+          <div class="task-title">${escapeHtml(tier.name)}</div>
+          <div class="task-meta">
+            <span class="pts-badge">목표 ${tier.targetPoints}점</span>
+            <span class="section-sub">${
+              tier.claimed
+                ? '🎉 수령 완료됨'
+                : tier.qualified
+                ? '✨ 자격 달성!'
+                : `${tier.remainingPoints}점 남음`
+            }</span>
+          </div>
+        </div>
+        <div class="admin-task-actions">
+          ${
+            tier.qualified && !tier.claimed
+              ? '<button type="button" class="btn btn-warning btn-tier-claim" style="min-height:34px;padding:6px 10px;font-size:12px;">🎁 수령 완료</button>'
+              : ''
+          }
+          <button type="button" class="icon-btn-sm btn-tier-del" title="삭제">🗑️</button>
+        </div>
+      `;
+
+      const claimBtn = li.querySelector('.btn-tier-claim');
+      if (claimBtn) {
+        claimBtn.addEventListener('click', () => {
+          state.giftClaims.unshift({
+            id: TodoData.uid('gift'),
+            claimKey: tier.claimKey,
+            claimedAt: today,
+            cycleLabel: `${cycle.cycleStart} ~ ${cycle.cycleEnd}`,
+            giftName: `${tier.name} (${tier.targetPoints}점)`,
+            giftEmoji: tier.emoji || '🎁'
+          });
+          TodoData.saveState(state);
+          playFanfare100();
+          launchConfetti(window.innerWidth / 2, window.innerHeight / 2, 55);
+          renderAll();
+        });
+      }
+
+      li.querySelector('.btn-tier-del').addEventListener('click', () => {
+        if (confirm(`"${tier.name} (${tier.targetPoints}점)" 선물을 목록에서 삭제할까요?`)) {
+          state.giftConfig.tiers = (state.giftConfig.tiers || []).filter((t) => t.id !== tier.id);
+          TodoData.saveState(state);
+          renderAll();
+        }
+      });
+
+      listEl.appendChild(li);
+    });
   }
 
   function renderAdminSmsAndLogs() {
@@ -573,7 +669,9 @@
     }
     const rec = state.dailyRecords[dateStr];
     const idx = rec.completedIds.indexOf(taskId);
-    const wasPassed = TodoData.getDaySummary(state, dateStr).passed;
+    const beforeSummary = TodoData.getDaySummary(state, dateStr);
+    const wasPassed = beforeSummary.passed;
+    const wasPerfect = beforeSummary.perfect;
 
     if (idx >= 0) {
       rec.completedIds.splice(idx, 1);
@@ -581,9 +679,8 @@
     } else {
       rec.completedIds.push(taskId);
       const after = TodoData.getDaySummary(state, dateStr);
-      if (after.perfect) {
-        playChime('celebrate');
-        launchConfetti(clickX, clickY, 45);
+      if (after.perfect && !wasPerfect) {
+        showBigCelebration100();
       } else if (!wasPassed && after.passed) {
         playChime('celebrate');
         launchConfetti(clickX, clickY, 26);
@@ -665,6 +762,15 @@
   // ==================== TASK EDIT MODAL (ADMIN ONLY) ====================
   let selectedTaskEmoji = '✏️';
   let editingWeekday = null;
+  let editingTaskMeta = null;
+
+  function isSameTaskGroup(task, meta) {
+    if (!task || !meta) return false;
+    if (task.id === meta.id) return true;
+    if (meta.groupId && task.groupId && task.groupId === meta.groupId) return true;
+    if (meta.originalTitle && task.title === meta.originalTitle) return true;
+    return false;
+  }
 
   function openTaskModal(existingTask, weekdayIdx) {
     if (!isAdminUnlocked) return;
@@ -677,23 +783,35 @@
     const daysGroup = document.getElementById('task-days-group');
 
     editingWeekday = weekdayIdx != null ? weekdayIdx : adminSelectedWeekday;
+    daysGroup.style.display = 'flex';
+
+    let preCheckedDays = [editingWeekday];
 
     if (existingTask) {
-      titleEl.textContent = '할일 항목 편집';
+      titleEl.textContent = '할일 항목 편집 (요일 멀티 선택)';
       idInput.value = existingTask.id;
       nameInput.value = existingTask.title;
       catInput.value = existingTask.category || '공부';
-      ptsInput.value = String(existingTask.points || 10);
+      ptsInput.value = String(existingTask.points || 20);
       selectedTaskEmoji = existingTask.emoji || '⭐';
-      daysGroup.style.display = 'none';
+      editingTaskMeta = {
+        id: existingTask.id,
+        groupId: existingTask.groupId || TodoData.uid('grp'),
+        originalTitle: existingTask.title
+      };
+      // Pre-check all weekdays that currently contain this task
+      preCheckedDays = TodoData.WEEKDAY_ORDER.filter((wd) =>
+        (state.weekdayTasks[wd] || []).some((t) => isSameTaskGroup(t, editingTaskMeta))
+      );
+      if (preCheckedDays.length === 0) preCheckedDays = [editingWeekday];
     } else {
       titleEl.textContent = '새 할일 항목 등록';
       idInput.value = '';
       nameInput.value = '';
       catInput.value = '공부';
-      ptsInput.value = '10';
+      ptsInput.value = '20';
       selectedTaskEmoji = '✏️';
-      daysGroup.style.display = 'flex';
+      editingTaskMeta = null;
     }
 
     const ep = document.getElementById('task-emoji-picker');
@@ -713,7 +831,7 @@
     const dayGrid = document.getElementById('task-day-checkboxes');
     dayGrid.innerHTML = '';
     TodoData.WEEKDAY_ORDER.forEach((wd) => {
-      const checked = wd === editingWeekday;
+      const checked = preCheckedDays.includes(wd);
       const lbl = document.createElement('label');
       lbl.className = `day-check-label${checked ? ' checked' : ''}`;
       lbl.innerHTML = `<input type="checkbox" value="${wd}" ${checked ? 'checked' : ''} />${TodoData.WEEKDAYS_KO[wd]}`;
@@ -912,10 +1030,29 @@
       openTaskModal(null, adminSelectedWeekday);
     });
 
+    document.getElementById('btn-admin-equalize').addEventListener('click', () => {
+      if (!isAdminUnlocked) return;
+      const list = state.weekdayTasks[adminSelectedWeekday] || [];
+      if (list.length === 0) return;
+      list.forEach((t) => {
+        t.points = 1;
+      });
+      TodoData.normalizeDayPoints(list);
+      TodoData.saveState(state);
+      renderAll();
+    });
+
     document.getElementById('btn-days-weekdays').addEventListener('click', () => {
       document.querySelectorAll('#task-day-checkboxes input').forEach((cb) => {
         const wd = Number(cb.value);
         cb.checked = wd >= 1 && wd <= 5;
+        cb.parentElement.classList.toggle('checked', cb.checked);
+      });
+    });
+    document.getElementById('btn-days-weekend').addEventListener('click', () => {
+      document.querySelectorAll('#task-day-checkboxes input').forEach((cb) => {
+        const wd = Number(cb.value);
+        cb.checked = wd === 0 || wd === 6;
         cb.parentElement.classList.toggle('checked', cb.checked);
       });
     });
@@ -932,27 +1069,51 @@
       const editId = document.getElementById('task-edit-id').value;
       const title = document.getElementById('task-title-input').value.trim();
       const category = document.getElementById('task-category-input').value;
-      const points = Number(document.getElementById('task-points-input').value || 10);
+      const points = Math.max(1, Math.min(100, Number(document.getElementById('task-points-input').value || 20)));
       if (!title) return;
 
-      if (editId) {
-        const list = state.weekdayTasks[editingWeekday] || [];
-        const target = list.find((t) => t.id === editId);
-        if (target) {
-          target.title = title;
-          target.category = category;
-          target.points = points;
-          target.emoji = selectedTaskEmoji;
-        }
+      const checkedDays = Array.from(document.querySelectorAll('#task-day-checkboxes input:checked')).map((c) =>
+        Number(c.value)
+      );
+      if (checkedDays.length === 0) {
+        alert('적용할 요일을 1개 이상 선택해주세요.');
+        return;
+      }
+
+      if (editId && editingTaskMeta) {
+        const grpId = editingTaskMeta.groupId || TodoData.uid('grp');
+        TodoData.WEEKDAY_ORDER.forEach((wd) => {
+          if (!state.weekdayTasks[wd]) state.weekdayTasks[wd] = [];
+          const list = state.weekdayTasks[wd];
+          const existing = list.find((t) => isSameTaskGroup(t, editingTaskMeta));
+          if (checkedDays.includes(wd)) {
+            if (existing) {
+              existing.groupId = grpId;
+              existing.title = title;
+              existing.category = category;
+              existing.points = points;
+              existing.emoji = selectedTaskEmoji;
+            } else {
+              list.push({
+                id: TodoData.uid('task'),
+                groupId: grpId,
+                title,
+                category,
+                points,
+                emoji: selectedTaskEmoji
+              });
+            }
+          } else if (existing) {
+            state.weekdayTasks[wd] = list.filter((t) => !isSameTaskGroup(t, editingTaskMeta));
+          }
+        });
       } else {
-        const checkedDays = Array.from(document.querySelectorAll('#task-day-checkboxes input:checked')).map((c) =>
-          Number(c.value)
-        );
-        const daysToAdd = checkedDays.length ? checkedDays : [editingWeekday];
-        daysToAdd.forEach((wd) => {
+        const grpId = TodoData.uid('grp');
+        checkedDays.forEach((wd) => {
           if (!state.weekdayTasks[wd]) state.weekdayTasks[wd] = [];
           state.weekdayTasks[wd].push({
             id: TodoData.uid('task'),
+            groupId: grpId,
             title,
             category,
             points,
@@ -961,23 +1122,57 @@
         });
       }
 
+      // Guarantee every weekday sums to strictly 100 points
+      TodoData.normalizeAllWeekdays(state);
       TodoData.saveState(state);
       document.getElementById('task-modal').classList.add('hidden');
       renderAll();
     });
 
-    // Admin Gift Settings
-    document.getElementById('admin-gift-form').addEventListener('submit', (e) => {
+    // Celebration overlay close
+    const celebOverlay = document.getElementById('celebration-overlay');
+    const celebCloseBtn = document.getElementById('btn-close-celebration');
+    if (celebCloseBtn && celebOverlay) {
+      celebCloseBtn.addEventListener('click', () => celebOverlay.classList.add('hidden'));
+      celebOverlay.addEventListener('click', (e) => {
+        if (e.target === celebOverlay) celebOverlay.classList.add('hidden');
+      });
+    }
+
+    // Admin Gift Settings (Custom Cycle Days + Multi-Tier Score Gifts)
+    document.querySelectorAll('.cycle-preset-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.getElementById('gift-cycle-days').value = btn.dataset.days;
+      });
+    });
+
+    document.getElementById('admin-cycle-form').addEventListener('submit', (e) => {
       e.preventDefault();
       if (!isAdminUnlocked) return;
-      state.giftConfig.name = document.getElementById('gift-name-input').value.trim() || '선물';
-      state.giftConfig.emoji = selectedGiftEmoji;
-      state.giftConfig.cycleDays = Number(document.getElementById('gift-cycle-days').value || 7);
-      state.giftConfig.requiredDays = Number(document.getElementById('gift-req-days').value || 5);
-      state.giftConfig.requiredPoints = Number(document.getElementById('gift-req-points').value || 100);
+      const days = Math.max(1, Math.min(90, Number(document.getElementById('gift-cycle-days').value || 7)));
+      state.giftConfig.cycleDays = days;
       TodoData.saveState(state);
       renderAll();
-      alert('✅ 선물 설정이 저장되었습니다!');
+      alert(`✅ 선물 주기가 ${days}일로 저장되었습니다!`);
+    });
+
+    document.getElementById('admin-tier-add-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!isAdminUnlocked) return;
+      const pts = Math.max(10, Number(document.getElementById('tier-points-input').value || 100));
+      const name = document.getElementById('tier-name-input').value.trim();
+      if (!name) return;
+      if (!Array.isArray(state.giftConfig.tiers)) state.giftConfig.tiers = [];
+      state.giftConfig.tiers.push({
+        id: TodoData.uid('tier'),
+        points: pts,
+        name,
+        emoji: selectedGiftEmoji
+      });
+      state.giftConfig.tiers.sort((a, b) => Number(a.points) - Number(b.points));
+      document.getElementById('tier-name-input').value = '';
+      TodoData.saveState(state);
+      renderAll();
     });
 
     // Admin SMS & Penalty Settings
