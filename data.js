@@ -284,17 +284,61 @@
   }
 
   function hydrateState(parsed) {
-    const merged = normalizeAllWeekdays(Object.assign(createEmptyState(), parsed || {}));
+    const base = createEmptyState();
+    const merged = Object.assign(base, parsed || {});
+
+    // Firebase Realtime DB strips empty arrays [] and may turn numeric-key objects into arrays
+    const rawWd = merged.weekdayTasks || {};
+    const fixedWd = {};
+    for (let i = 0; i <= 6; i++) {
+      const list = rawWd[i] || rawWd[String(i)];
+      fixedWd[i] = Array.isArray(list) ? list.filter(Boolean) : [];
+    }
+    merged.weekdayTasks = fixedWd;
+
+    if (!merged.dailyRecords || typeof merged.dailyRecords !== 'object') {
+      merged.dailyRecords = {};
+    } else {
+      Object.keys(merged.dailyRecords).forEach((dStr) => {
+        const rec = merged.dailyRecords[dStr];
+        if (!rec || typeof rec !== 'object') {
+          delete merged.dailyRecords[dStr];
+          return;
+        }
+        rec.completedIds = Array.isArray(rec.completedIds) ? rec.completedIds.filter(Boolean) : [];
+        rec.settled = Boolean(rec.settled);
+        rec.penaltyApplied = Number(rec.penaltyApplied || 0);
+        rec.smsSent = Boolean(rec.smsSent);
+      });
+    }
+
+    merged.giftClaims = Array.isArray(merged.giftClaims) ? merged.giftClaims.filter(Boolean) : [];
+    merged.smsLogs = Array.isArray(merged.smsLogs) ? merged.smsLogs.filter(Boolean) : [];
+    merged.penaltyLogs = Array.isArray(merged.penaltyLogs) ? merged.penaltyLogs.filter(Boolean) : [];
+
+    if (!merged.profile || typeof merged.profile !== 'object') merged.profile = base.profile;
+    if (!merged.profile.photoMeta || typeof merged.profile.photoMeta !== 'object') {
+      merged.profile.photoMeta = base.profile.photoMeta;
+    }
+    if (!Array.isArray(merged.profile.photoMeta.stickers)) {
+      merged.profile.photoMeta.stickers = [];
+    }
+
+    if (!merged.admin || typeof merged.admin !== 'object') merged.admin = { passwordHash: '' };
+
+    normalizeAllWeekdays(merged);
+
     // Migrate legacy SMS settings to KakaoTalk settings
-    if (!merged.settings) merged.settings = createEmptyState().settings;
+    if (!merged.settings) merged.settings = base.settings;
     if (merged.settings.kakaoEnabled === undefined) {
       merged.settings.kakaoEnabled = merged.settings.smsEnabled !== undefined ? merged.settings.smsEnabled : true;
     }
     if (!merged.settings.kakaoSender) merged.settings.kakaoSender = '엄마';
     if (!merged.settings.kakaoReceiver) merged.settings.kakaoReceiver = '민수';
     if (merged.settings.kakaoJsKey === undefined) merged.settings.kakaoJsKey = '';
+
     // Migrate legacy single-gift config to tiers array if needed
-    if (!merged.giftConfig) merged.giftConfig = createEmptyState().giftConfig;
+    if (!merged.giftConfig) merged.giftConfig = base.giftConfig;
     if (!Array.isArray(merged.giftConfig.tiers) || merged.giftConfig.tiers.length === 0) {
       merged.giftConfig.tiers = [
         {
@@ -338,14 +382,15 @@
 
   function getDaySummary(state, dateStr) {
     const wd = getWeekdayIndex(dateStr);
-    const tasks = state.weekdayTasks[wd] || [];
-    const rec = state.dailyRecords[dateStr] || {
+    const tasks = Array.isArray(state.weekdayTasks && state.weekdayTasks[wd]) ? state.weekdayTasks[wd] : [];
+    const rec = (state.dailyRecords && state.dailyRecords[dateStr]) || {
       completedIds: [],
       settled: false,
       penaltyApplied: 0,
       smsSent: false
     };
-    const validCompletedIds = rec.completedIds.filter((id) => tasks.some((t) => t.id === id));
+    const rawCompleted = Array.isArray(rec.completedIds) ? rec.completedIds : [];
+    const validCompletedIds = rawCompleted.filter((id) => tasks.some((t) => t.id === id));
     const totalCount = tasks.length;
     const doneCount = validCompletedIds.length;
     const totalPossiblePoints = tasks.reduce((sum, t) => sum + Number(t.points || 0), 0);

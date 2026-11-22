@@ -734,6 +734,7 @@
       };
     }
     const rec = state.dailyRecords[dateStr];
+    if (!Array.isArray(rec.completedIds)) rec.completedIds = [];
     const idx = rec.completedIds.indexOf(taskId);
     const beforeSummary = TodoData.getDaySummary(state, dateStr);
     const wasPassed = beforeSummary.passed;
