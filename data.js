@@ -283,16 +283,22 @@
     return state;
   }
 
+  function toArray(val) {
+    if (Array.isArray(val)) return val.filter(Boolean);
+    if (val && typeof val === 'object') return Object.values(val).filter(Boolean);
+    return [];
+  }
+
   function hydrateState(parsed) {
     const base = createEmptyState();
     const merged = Object.assign(base, parsed || {});
 
-    // Firebase Realtime DB strips empty arrays [] and may turn numeric-key objects into arrays
+    // Firebase Realtime DB strips empty arrays [] and may convert sparse arrays to objects
     const rawWd = merged.weekdayTasks || {};
     const fixedWd = {};
     for (let i = 0; i <= 6; i++) {
-      const list = rawWd[i] || rawWd[String(i)];
-      fixedWd[i] = Array.isArray(list) ? list.filter(Boolean) : [];
+      const list = rawWd[i] !== undefined ? rawWd[i] : rawWd[String(i)];
+      fixedWd[i] = toArray(list);
     }
     merged.weekdayTasks = fixedWd;
 
@@ -305,24 +311,22 @@
           delete merged.dailyRecords[dStr];
           return;
         }
-        rec.completedIds = Array.isArray(rec.completedIds) ? rec.completedIds.filter(Boolean) : [];
+        rec.completedIds = toArray(rec.completedIds);
         rec.settled = Boolean(rec.settled);
         rec.penaltyApplied = Number(rec.penaltyApplied || 0);
         rec.smsSent = Boolean(rec.smsSent);
       });
     }
 
-    merged.giftClaims = Array.isArray(merged.giftClaims) ? merged.giftClaims.filter(Boolean) : [];
-    merged.smsLogs = Array.isArray(merged.smsLogs) ? merged.smsLogs.filter(Boolean) : [];
-    merged.penaltyLogs = Array.isArray(merged.penaltyLogs) ? merged.penaltyLogs.filter(Boolean) : [];
+    merged.giftClaims = toArray(merged.giftClaims);
+    merged.smsLogs = toArray(merged.smsLogs);
+    merged.penaltyLogs = toArray(merged.penaltyLogs);
 
     if (!merged.profile || typeof merged.profile !== 'object') merged.profile = base.profile;
     if (!merged.profile.photoMeta || typeof merged.profile.photoMeta !== 'object') {
       merged.profile.photoMeta = base.profile.photoMeta;
     }
-    if (!Array.isArray(merged.profile.photoMeta.stickers)) {
-      merged.profile.photoMeta.stickers = [];
-    }
+    merged.profile.photoMeta.stickers = toArray(merged.profile.photoMeta.stickers);
 
     if (!merged.admin || typeof merged.admin !== 'object') merged.admin = { passwordHash: '' };
 
@@ -339,7 +343,8 @@
 
     // Migrate legacy single-gift config to tiers array if needed
     if (!merged.giftConfig) merged.giftConfig = base.giftConfig;
-    if (!Array.isArray(merged.giftConfig.tiers) || merged.giftConfig.tiers.length === 0) {
+    const tiersArr = toArray(merged.giftConfig.tiers);
+    if (tiersArr.length === 0) {
       merged.giftConfig.tiers = [
         {
           id: uid('tier'),
@@ -348,6 +353,8 @@
           emoji: merged.giftConfig.emoji || '🎁'
         }
       ];
+    } else {
+      merged.giftConfig.tiers = tiersArr;
     }
     merged.giftConfig.tiers.sort((a, b) => Number(a.points) - Number(b.points));
     return merged;
