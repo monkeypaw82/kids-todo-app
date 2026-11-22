@@ -323,7 +323,7 @@
     merged.penaltyLogs = toArray(merged.penaltyLogs);
 
     if (!merged.profile || typeof merged.profile !== 'object') merged.profile = base.profile;
-    if (!merged.profile.title || merged.profile.title === '민수의 오늘도 화이팅! 🌟') {
+    if (!merged.profile.title || merged.profile.title.includes('민수')) {
       merged.profile.title = '아린이의 오늘 화이팅! 🌟';
     }
     if (!merged.profile.photoMeta || typeof merged.profile.photoMeta !== 'object') {
