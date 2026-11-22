@@ -53,7 +53,10 @@
         <img id="hero-photo-img" class="hero-photo-img" alt="아이의 메인 사진" />
         <div class="hero-photo-overlay">
           <div class="hero-top-actions">
-            <span class="app-brand-pill">✨ 반짝반짝 아이의 할일</span>
+            <div class="brand-sync-group">
+              <span class="app-brand-pill">✨ 반짝반짝 아이의 할일</span>
+              <span id="sync-status-pill" class="sync-pill hidden">☁️ 실시간 동기화</span>
+            </div>
             <div class="hero-btn-group">
               <button id="btn-sound-toggle" class="glass-btn" title="효과음 켜기/끄기">🔊</button>
               <button id="btn-edit-photo" class="glass-btn primary-glass">📷 사진 꾸미기</button>
@@ -391,7 +394,8 @@
         <button type="button" class="admin-tab active" data-admin-tab="tasks">📝 할일 편집</button>
         <button type="button" class="admin-tab" data-admin-tab="gift">🎁 선물 설정</button>
         <button type="button" class="admin-tab" data-admin-tab="sms">💬 카톡 · 감점</button>
-        <button type="button" class="admin-tab" data-admin-tab="security">🔐 비밀번호 · 기기</button>
+        <button type="button" class="admin-tab" data-admin-tab="sync">☁️ 기기 동기화</button>
+        <button type="button" class="admin-tab" data-admin-tab="security">🔐 비밀번호</button>
       </div>
 
       <div class="admin-body">
@@ -566,7 +570,60 @@
           </div>
         </section>
 
-        <!-- ADMIN TAB 4: 비밀번호 변경 & 기기/데이터 관리 -->
+        <!-- ADMIN TAB 4: 기기간 실시간 동기화 -->
+        <section id="admin-panel-sync" class="admin-panel">
+          <div class="admin-two-col">
+            <form id="admin-sync-form" class="form-section-box">
+              <h3 class="form-section-title">☁️ PC · 아이패드 · 아이폰 실시간 동기화</h3>
+              <p class="help-text">무료 Firebase Realtime Database 주소를 한 번 연결하면, 아이가 아이패드에서 할일을 체크할 때 부모님 휴대폰/PC에 즉시 반영됩니다.</p>
+
+              <div class="form-group">
+                <label for="sync-db-url">Firebase Realtime Database URL</label>
+                <input id="sync-db-url" type="url" required placeholder="https://your-app-default-rtdb.asia-southeast1.firebasedatabase.app" />
+              </div>
+
+              <div class="form-group">
+                <label for="sync-family-code">우리 가족 동기화 코드 (자유 입력)</label>
+                <input id="sync-family-code" type="text" required maxlength="32" placeholder="예: minsu-family-2026" />
+                <small class="help-text">같은 URL과 가족 코드를 쓰는 모든 기기가 실시간으로 데이터를 공유합니다.</small>
+              </div>
+
+              <div id="sync-admin-status" class="admin-gift-status-box">상태: 미연결 (현재 기기만 저장 중)</div>
+
+              <div class="settings-actions">
+                <button type="submit" class="btn btn-primary">☁️ 연결 및 즉시 동기화</button>
+                <button type="button" id="btn-sync-now" class="btn btn-soft">🔄 지금 동기화</button>
+                <button type="button" id="btn-sync-disconnect" class="btn btn-ghost-danger">연결 해제</button>
+              </div>
+            </form>
+
+            <div class="logs-column">
+              <div class="form-section-box">
+                <h3 class="form-section-title">🔗 아이폰 · 아이패드 1초 자동 연결 링크</h3>
+                <p class="help-text">동기화를 연결한 뒤 아래 링크를 아이패드/아이폰으로 보내서 한 번만 열면 별도 입력 없이 자동으로 동기화됩니다!</p>
+                <div class="form-group">
+                  <input id="sync-magic-link" type="text" readonly placeholder="먼저 좌측에서 동기화를 연결해주세요" />
+                </div>
+                <div class="settings-actions">
+                  <button type="button" id="btn-copy-sync-link" class="btn btn-soft">📋 연결 링크 복사</button>
+                  <button type="button" id="btn-kakao-sync-link" class="btn btn-kakao">💬 카톡으로 링크 보내기</button>
+                </div>
+              </div>
+
+              <div class="form-section-box">
+                <h3 class="form-section-title">📖 무료 Firebase DB 주소 만드는 법 (1분)</h3>
+                <p class="help-text">
+                  1. <a href="https://console.firebase.google.com/" target="_blank" rel="noopener">Firebase 콘솔</a>에서 프로젝트 만들기 (무료 Spark 요금제)<br />
+                  2. 좌측 메뉴 <strong>빌드 → Realtime Database → 데이터베이스 만들기</strong><br />
+                  3. 위치 선택 후 <strong>테스트 모드에서 시작</strong> 선택<br />
+                  4. 상단에 생성된 <code>https://...firebasedatabase.app</code> 주소를 복사해 좌측에 붙여넣기!
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ADMIN TAB 5: 비밀번호 변경 & 기기/데이터 관리 -->
         <section id="admin-panel-security" class="admin-panel">
           <div class="admin-two-col">
             <form id="admin-change-pw-form" class="form-section-box">
@@ -672,6 +729,7 @@
   <script src="data.js"></script>
   <script src="photo-editor.js"></script>
   <script src="sms-service.js"></script>
+  <script src="sync-service.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

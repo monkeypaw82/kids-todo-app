@@ -668,6 +668,48 @@
     }
   }
 
+  function updateSyncStatusUI(status, detail) {
+    const pill = document.getElementById('sync-status-pill');
+    const adminBox = document.getElementById('sync-admin-status');
+    if (pill) {
+      if (status === 'offline') {
+        pill.className = 'sync-pill hidden';
+      } else if (status === 'syncing') {
+        pill.className = 'sync-pill syncing';
+        pill.textContent = `🔄 ${detail || '동기화 중...'}`;
+      } else if (status === 'error') {
+        pill.className = 'sync-pill error';
+        pill.textContent = `⚠️ ${detail || '동기화 오류'}`;
+      } else {
+        pill.className = 'sync-pill';
+        pill.textContent = `☁️ ${detail || '실시간 동기화'}`;
+      }
+    }
+    if (adminBox) {
+      const cfg = SyncService.getConfig();
+      if (!cfg.enabled || !cfg.dbUrl) {
+        adminBox.textContent = '상태: 미연결 (현재 기기만 저장 중)';
+      } else if (status === 'error') {
+        adminBox.textContent = `상태: ⚠️ ${detail || '연결 오류'} (Firebase DB 규칙이 테스트 모드인지 확인해주세요)`;
+      } else {
+        adminBox.textContent = `상태: ✅ ${detail || '실시간 동기화 중'} (가족 코드: ${cfg.familyCode})`;
+      }
+    }
+  }
+
+  function renderAdminSync() {
+    if (!window.SyncService) return;
+    const cfg = SyncService.getConfig();
+    const urlInput = document.getElementById('sync-db-url');
+    const codeInput = document.getElementById('sync-family-code');
+    const magicInput = document.getElementById('sync-magic-link');
+    if (urlInput && document.activeElement !== urlInput) urlInput.value = cfg.dbUrl || '';
+    if (codeInput && document.activeElement !== codeInput) codeInput.value = cfg.familyCode || '';
+    if (magicInput) {
+      magicInput.value = cfg.enabled ? SyncService.buildMagicShareLink() : '';
+    }
+  }
+
   function renderAll() {
     renderHero();
     renderWeekdayBoard();
@@ -676,6 +718,7 @@
       renderAdminTasks();
       renderAdminGift();
       renderAdminSmsAndLogs();
+      renderAdminSync();
     }
   }
 
@@ -765,6 +808,7 @@
     renderAdminTasks();
     renderAdminGift();
     renderAdminSmsAndLogs();
+    renderAdminSync();
   }
 
   function closeAdminPanel() {
@@ -1257,6 +1301,85 @@
       }
     });
 
+    // Admin Realtime Sync Controls
+    const syncForm = document.getElementById('admin-sync-form');
+    if (syncForm) {
+      syncForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!isAdminUnlocked) return;
+        const dbUrl = document.getElementById('sync-db-url').value.trim();
+        const familyCode = document.getElementById('sync-family-code').value.trim();
+        if (!dbUrl || !familyCode) return;
+
+        const res = await SyncService.connectAndSync({ dbUrl, familyCode }, state);
+        renderAdminSync();
+        if (res.ok) {
+          alert(
+            res.pulledFromCloud
+              ? '☁️ 실시간 동기화 연결 완료! 클라우드의 최신 데이터를 불러왔습니다.'
+              : '☁️ 실시간 동기화 연결 완료! 현재 기기의 데이터를 클라우드에 업로드했습니다.'
+          );
+        } else {
+          alert(`⚠️ 연결 실패: ${res.error || '주소를 확인해주세요.'}\nFirebase Realtime Database가 "테스트 모드"로 열려 있는지 확인해주세요.`);
+        }
+      });
+    }
+
+    const syncNowBtn = document.getElementById('btn-sync-now');
+    if (syncNowBtn) {
+      syncNowBtn.addEventListener('click', async () => {
+        if (!isAdminUnlocked) return;
+        const cfg = SyncService.getConfig();
+        if (!cfg.enabled || !cfg.dbUrl) {
+          alert('먼저 Firebase DB 주소와 가족 코드를 입력해 연결해주세요.');
+          return;
+        }
+        await SyncService.pushNow(state);
+        await SyncService.pullOnce();
+        alert('🔄 동기화가 완료되었습니다!');
+      });
+    }
+
+    const syncDisBtn = document.getElementById('btn-sync-disconnect');
+    if (syncDisBtn) {
+      syncDisBtn.addEventListener('click', () => {
+        if (!isAdminUnlocked) return;
+        if (confirm('이 기기의 실시간 동기화 연결을 해제할까요? (로컬 데이터는 유지됩니다)')) {
+          SyncService.disconnect();
+          renderAdminSync();
+        }
+      });
+    }
+
+    const copyLinkBtn = document.getElementById('btn-copy-sync-link');
+    if (copyLinkBtn) {
+      copyLinkBtn.addEventListener('click', async () => {
+        const link = SyncService.buildMagicShareLink();
+        if (!link) {
+          alert('먼저 좌측에서 동기화를 연결해주세요.');
+          return;
+        }
+        await KakaoAlertService.copyText(link);
+        alert('📋 자동 연결 링크가 복사되었습니다! 아이패드·아이폰 Safari에 붙여넣어 한 번만 열면 자동 동기화됩니다.');
+      });
+    }
+
+    const kakaoLinkBtn = document.getElementById('btn-kakao-sync-link');
+    if (kakaoLinkBtn) {
+      kakaoLinkBtn.addEventListener('click', async () => {
+        const link = SyncService.buildMagicShareLink();
+        if (!link) {
+          alert('먼저 좌측에서 동기화를 연결해주세요.');
+          return;
+        }
+        const msg = `[☁️ 아이 할일 실시간 동기화 연결 링크]\n아이패드·아이폰에서 아래 링크를 누르면 자동으로 동기화됩니다!\n${link}`;
+        const r = await KakaoAlertService.shareToKakao(state, msg);
+        if (r.method === 'clipboard') {
+          alert('📋 연결 링크 메시지가 복사되었습니다! 카카오톡에 붙여넣어 아이패드·아이폰으로 보내주세요.');
+        }
+      });
+    }
+
     // Admin Security & Data
     document.getElementById('admin-change-pw-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -1470,4 +1593,17 @@
   bindEvents();
   renderAll();
   startCutoffWatcher();
+
+  if (window.SyncService) {
+    SyncService.init({
+      onRemoteState: (remoteState) => {
+        state = TodoData.hydrateState(remoteState);
+        TodoData.saveState(state, { skipSync: true });
+        renderAll();
+      },
+      onStatusChange: (status, detail) => {
+        updateSyncStatusUI(status, detail);
+      }
+    });
+  }
 })();

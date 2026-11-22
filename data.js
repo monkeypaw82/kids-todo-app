@@ -283,47 +283,54 @@
     return state;
   }
 
+  function hydrateState(parsed) {
+    const merged = normalizeAllWeekdays(Object.assign(createEmptyState(), parsed || {}));
+    // Migrate legacy SMS settings to KakaoTalk settings
+    if (!merged.settings) merged.settings = createEmptyState().settings;
+    if (merged.settings.kakaoEnabled === undefined) {
+      merged.settings.kakaoEnabled = merged.settings.smsEnabled !== undefined ? merged.settings.smsEnabled : true;
+    }
+    if (!merged.settings.kakaoSender) merged.settings.kakaoSender = '엄마';
+    if (!merged.settings.kakaoReceiver) merged.settings.kakaoReceiver = '민수';
+    if (merged.settings.kakaoJsKey === undefined) merged.settings.kakaoJsKey = '';
+    // Migrate legacy single-gift config to tiers array if needed
+    if (!merged.giftConfig) merged.giftConfig = createEmptyState().giftConfig;
+    if (!Array.isArray(merged.giftConfig.tiers) || merged.giftConfig.tiers.length === 0) {
+      merged.giftConfig.tiers = [
+        {
+          id: uid('tier'),
+          points: Number(merged.giftConfig.requiredPoints || 500),
+          name: merged.giftConfig.name || '레고 브릭 세트',
+          emoji: merged.giftConfig.emoji || '🎁'
+        }
+      ];
+    }
+    merged.giftConfig.tiers.sort((a, b) => Number(a.points) - Number(b.points));
+    return merged;
+  }
+
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
         const demo = createDemoState();
-        saveState(demo);
+        saveState(demo, { skipSync: true });
         return demo;
       }
-      const parsed = JSON.parse(raw);
-      const merged = normalizeAllWeekdays(Object.assign(createEmptyState(), parsed));
-      // Migrate legacy SMS settings to KakaoTalk settings
-      if (!merged.settings) merged.settings = createEmptyState().settings;
-      if (merged.settings.kakaoEnabled === undefined) {
-        merged.settings.kakaoEnabled = merged.settings.smsEnabled !== undefined ? merged.settings.smsEnabled : true;
-      }
-      if (!merged.settings.kakaoSender) merged.settings.kakaoSender = '엄마';
-      if (!merged.settings.kakaoReceiver) merged.settings.kakaoReceiver = '민수';
-      if (merged.settings.kakaoJsKey === undefined) merged.settings.kakaoJsKey = '';
-      // Migrate legacy single-gift config to tiers array if needed
-      if (!merged.giftConfig) merged.giftConfig = createEmptyState().giftConfig;
-      if (!Array.isArray(merged.giftConfig.tiers) || merged.giftConfig.tiers.length === 0) {
-        merged.giftConfig.tiers = [
-          {
-            id: uid('tier'),
-            points: Number(merged.giftConfig.requiredPoints || 500),
-            name: merged.giftConfig.name || '레고 브릭 세트',
-            emoji: merged.giftConfig.emoji || '🎁'
-          }
-        ];
-      }
-      merged.giftConfig.tiers.sort((a, b) => Number(a.points) - Number(b.points));
-      return merged;
+      return hydrateState(JSON.parse(raw));
     } catch (e) {
       console.warn('Failed to load state, resetting to demo:', e);
       return createDemoState();
     }
   }
 
-  function saveState(state) {
+  function saveState(state, options) {
+    const opts = options || {};
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (!opts.skipSync && global.SyncService) {
+        global.SyncService.schedulePush(state);
+      }
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
     }
@@ -474,6 +481,7 @@
     normalizeAllWeekdays,
     createEmptyState,
     createDemoState,
+    hydrateState,
     loadState,
     saveState,
     getDaySummary,

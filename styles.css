@@ -436,6 +436,13 @@ body {
   flex-wrap: wrap;
 }
 
+.brand-sync-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .app-brand-pill {
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
@@ -444,6 +451,28 @@ body {
   padding: 6px 14px;
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.sync-pill {
+  background: rgba(16, 185, 129, 0.92);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 11px;
+  border-radius: 999px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.16);
+}
+
+.sync-pill.syncing {
+  background: rgba(245, 158, 11, 0.94);
+}
+
+.sync-pill.error {
+  background: rgba(239, 68, 68, 0.92);
+}
+
+.sync-pill.hidden {
+  display: none;
 }
 
 .hero-btn-group {
@@ -1570,7 +1599,7 @@ body {
 
 .admin-nav {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   padding: 10px 16px;
   background: #f8fafc;
