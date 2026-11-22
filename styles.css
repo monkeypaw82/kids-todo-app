@@ -345,6 +345,50 @@ body {
   color: #f8fafc;
 }
 
+.kakao-badge {
+  color: #fee500 !important;
+}
+
+.toast-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.btn-kakao {
+  background: #fee500;
+  color: #3c1e1e;
+  box-shadow: 0 4px 12px rgba(254, 229, 0, 0.35);
+}
+
+.btn-kakao:hover {
+  background: #f5dc00;
+}
+
+.btn-kakao-sm {
+  background: #fee500;
+  color: #3c1e1e;
+  padding: 6px 12px;
+  min-height: 32px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+.btn-toast-copy {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  padding: 6px 12px;
+  min-height: 32px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+.log-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 /* Hero Card */
 .hero-card {
   border-radius: var(--radius-xl);

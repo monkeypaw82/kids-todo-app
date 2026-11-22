@@ -236,7 +236,7 @@
       if (summary.penaltyPoints > 0) {
         alertBanner.textContent = `⚠️ 기준(${threshold}%) 미달로 -${summary.penaltyPoints}점 감점되었어요. 지금 완료하면 감점이 취소돼요!`;
       } else {
-        alertBanner.textContent = `⚠️ 현재 ${summary.rate}% (목표 ${threshold}%) — ${state.settings.cutoffTime}까지 미달 시 -${state.settings.penaltyPoints}점 감점 및 SMS 알림!`;
+        alertBanner.textContent = `⚠️ 현재 ${summary.earnedPoints}점 (목표 ${threshold}점) — ${state.settings.cutoffTime}까지 미달 시 -${state.settings.penaltyPoints}점 감점 및 카카오톡 알림!`;
       }
     }
 
@@ -601,26 +601,48 @@
     document.getElementById('setting-threshold-val').textContent = `${s.threshold}%`;
     document.getElementById('setting-penalty').value = s.penaltyPoints;
     document.getElementById('setting-cutoff').value = s.cutoffTime;
-    document.getElementById('setting-sms-enabled').checked = Boolean(s.smsEnabled);
-    document.getElementById('setting-parent-phone').value = s.parentPhone || '';
-    document.getElementById('setting-child-phone').value = s.childPhone || '';
+    document.getElementById('setting-sms-enabled').checked = s.kakaoEnabled !== false;
+    document.getElementById('setting-kakao-sender').value = s.kakaoSender || '엄마';
+    document.getElementById('setting-kakao-receiver').value = s.kakaoReceiver || '민수';
+    document.getElementById('setting-kakao-key').value = s.kakaoJsKey || '';
     document.getElementById('setting-webhook').value = s.webhookUrl || '';
 
     const smsList = document.getElementById('sms-log-list');
     smsList.innerHTML = '';
     if (state.smsLogs.length === 0) {
-      smsList.innerHTML = '<div class="section-sub">아직 발송된 SMS 알림이 없습니다.</div>';
+      smsList.innerHTML = '<div class="section-sub">아직 생성된 카카오톡 알림 내역이 없습니다.</div>';
     } else {
       state.smsLogs.forEach((log) => {
         const div = document.createElement('div');
         div.className = 'sms-log-item';
+        const routeLabel =
+          log.sender || log.receiver
+            ? `발신: ${log.sender || '엄마'} → 수신: ${log.receiver || '민수'}`
+            : `대상: ${log.to || '미지정'}`;
         div.innerHTML = `
           <div class="sms-log-meta">
-            <span>수신: ${escapeHtml(log.to)}</span>
+            <span><strong>${escapeHtml(routeLabel)}</strong></span>
             <span>${escapeHtml(log.timestamp)} · ${escapeHtml(log.status)}</span>
           </div>
           <div class="sms-log-msg">${escapeHtml(log.message)}</div>
+          <div class="log-item-actions">
+            <button type="button" class="btn btn-kakao-sm btn-log-share">💬 카톡 공유</button>
+            <button type="button" class="btn btn-soft-sm btn-log-copy">📋 복사</button>
+          </div>
         `;
+        div.querySelector('.btn-log-share').addEventListener('click', async () => {
+          const r = await KakaoAlertService.shareToKakao(state, log.message);
+          if (r.method === 'clipboard') {
+            alert('📋 카카오톡 메시지가 복사되었습니다! 카카오톡 채팅방에 붙여넣기 해주세요.');
+          }
+        });
+        div.querySelector('.btn-log-copy').addEventListener('click', async (ev) => {
+          await KakaoAlertService.copyText(log.message);
+          ev.currentTarget.textContent = '✓ 복사됨';
+          setTimeout(() => {
+            ev.currentTarget.textContent = '📋 복사';
+          }, 1600);
+        });
         smsList.appendChild(div);
       });
     }
@@ -1181,40 +1203,54 @@
       document.getElementById('setting-threshold-val').textContent = `${threshSlider.value}%`;
     });
 
-    document.getElementById('sms-settings-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (!isAdminUnlocked) return;
+    function syncKakaoSettingsFromForm() {
       state.settings.threshold = Number(document.getElementById('setting-threshold').value || 70);
       state.settings.penaltyPoints = Number(document.getElementById('setting-penalty').value || 0);
       state.settings.cutoffTime = document.getElementById('setting-cutoff').value || '20:00';
-      state.settings.smsEnabled = document.getElementById('setting-sms-enabled').checked;
-      state.settings.parentPhone = document.getElementById('setting-parent-phone').value.trim();
-      state.settings.childPhone = document.getElementById('setting-child-phone').value.trim();
+      state.settings.kakaoEnabled = document.getElementById('setting-sms-enabled').checked;
+      state.settings.kakaoSender = document.getElementById('setting-kakao-sender').value.trim() || '엄마';
+      state.settings.kakaoReceiver = document.getElementById('setting-kakao-receiver').value.trim() || '민수';
+      state.settings.kakaoJsKey = document.getElementById('setting-kakao-key').value.trim();
       state.settings.webhookUrl = document.getElementById('setting-webhook').value.trim();
       TodoData.saveState(state);
+    }
+
+    document.getElementById('sms-settings-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!isAdminUnlocked) return;
+      syncKakaoSettingsFromForm();
       renderAll();
-      alert('✅ SMS 알림 및 감점 규칙이 저장되었습니다!');
+      alert('✅ 카카오톡 알림(발신자/수신자) 및 감점 규칙이 저장되었습니다!');
     });
 
     document.getElementById('btn-test-sms').addEventListener('click', async () => {
       if (!isAdminUnlocked) return;
-      await SmsService.settleDay(state, TodoData.getTodayStr(), { testOnly: true, forceSms: true });
+      syncKakaoSettingsFromForm();
+      await KakaoAlertService.settleDay(state, TodoData.getTodayStr(), {
+        testOnly: true,
+        forceSms: true,
+        triggerShare: true
+      });
       renderAll();
     });
 
     document.getElementById('btn-run-daily-check').addEventListener('click', async () => {
       if (!isAdminUnlocked) return;
-      const res = await SmsService.settleDay(state, TodoData.getTodayStr(), { forceSms: true });
+      syncKakaoSettingsFromForm();
+      const res = await KakaoAlertService.settleDay(state, TodoData.getTodayStr(), {
+        forceSms: true,
+        triggerShare: true
+      });
       renderAll();
       if (res.missingCount === 0) {
-        playChime('celebrate');
+        playFanfare100();
         alert('🎉 오늘의 모든 할일이 완료되어 감점 없이 마감되었습니다!');
       }
     });
 
     document.getElementById('btn-clear-sms-log').addEventListener('click', () => {
       if (!isAdminUnlocked) return;
-      if (confirm('SMS 발송 내역을 모두 비울까요?')) {
+      if (confirm('카카오톡 알림 내역을 모두 비울까요?')) {
         state.smsLogs = [];
         TodoData.saveState(state);
         renderAll();

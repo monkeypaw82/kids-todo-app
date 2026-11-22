@@ -183,9 +183,10 @@
         threshold: 70,
         penaltyPoints: 15,
         cutoffTime: '20:00',
-        smsEnabled: true,
-        parentPhone: '010-1234-5678',
-        childPhone: '010-9876-5432',
+        kakaoEnabled: true,
+        kakaoSender: '엄마',
+        kakaoReceiver: '민수',
+        kakaoJsKey: '',
         webhookUrl: ''
       },
       giftConfig: {
@@ -248,12 +249,14 @@
           points: -state.settings.penaltyPoints
         });
         state.smsLogs.unshift({
-          id: uid('sms'),
+          id: uid('kakao'),
           date: dStr,
           timestamp: `${dStr} ${state.settings.cutoffTime}`,
-          to: [state.settings.parentPhone, state.settings.childPhone].filter(Boolean).join(', '),
-          status: '발송완료 (시뮬레이터)',
-          message: `[아이 할일 알림] ${formatKoreanDate(dStr)}\n성취도 ${rate}%로 기준(${state.settings.threshold}%) 미달하여 -${state.settings.penaltyPoints}점 감점되었습니다.\n미완료 할일: ${missed.join(', ')}`
+          sender: state.settings.kakaoSender || '엄마',
+          receiver: state.settings.kakaoReceiver || '민수',
+          to: `${state.settings.kakaoSender || '엄마'} → ${state.settings.kakaoReceiver || '민수'}`,
+          status: '알림 기록 (카카오톡)',
+          message: `[💬 카카오톡 할일 알림]\n발신: ${state.settings.kakaoSender || '엄마'} → 수신: ${state.settings.kakaoReceiver || '민수'}\n${formatKoreanDate(dStr)}\n성취도 ${rate}%로 기준(${state.settings.threshold}%) 미달하여 -${state.settings.penaltyPoints}점 감점되었습니다.\n미완료 할일: ${missed.join(', ')}`
         });
       }
     });
@@ -290,6 +293,14 @@
       }
       const parsed = JSON.parse(raw);
       const merged = normalizeAllWeekdays(Object.assign(createEmptyState(), parsed));
+      // Migrate legacy SMS settings to KakaoTalk settings
+      if (!merged.settings) merged.settings = createEmptyState().settings;
+      if (merged.settings.kakaoEnabled === undefined) {
+        merged.settings.kakaoEnabled = merged.settings.smsEnabled !== undefined ? merged.settings.smsEnabled : true;
+      }
+      if (!merged.settings.kakaoSender) merged.settings.kakaoSender = '엄마';
+      if (!merged.settings.kakaoReceiver) merged.settings.kakaoReceiver = '민수';
+      if (merged.settings.kakaoJsKey === undefined) merged.settings.kakaoJsKey = '';
       // Migrate legacy single-gift config to tiers array if needed
       if (!merged.giftConfig) merged.giftConfig = createEmptyState().giftConfig;
       if (!Array.isArray(merged.giftConfig.tiers) || merged.giftConfig.tiers.length === 0) {
