@@ -673,7 +673,8 @@
     const adminBox = document.getElementById('sync-admin-status');
     if (pill) {
       if (status === 'offline') {
-        pill.className = 'sync-pill hidden';
+        pill.className = 'sync-pill offline';
+        pill.textContent = '☁️ 동기화 미연결';
       } else if (status === 'syncing') {
         pill.className = 'sync-pill syncing';
         pill.textContent = `🔄 ${detail || '동기화 중...'}`;
@@ -1019,6 +1020,8 @@
     });
     document.getElementById('btn-edit-photo').addEventListener('click', openPhotoModal);
     document.getElementById('btn-open-admin').addEventListener('click', openAdminAuth);
+    const syncPillEl = document.getElementById('sync-status-pill');
+    if (syncPillEl) syncPillEl.addEventListener('click', openAdminAuth);
 
     // Mobile bottom bar
     document.getElementById('mobile-btn-photo').addEventListener('click', openPhotoModal);
