@@ -69,6 +69,23 @@
     }
   }
 
+  function syncUrlWithConfig() {
+    try {
+      const base = `${window.location.origin}${window.location.pathname}`;
+      if (syncConfig.enabled && syncConfig.dbUrl && syncConfig.familyCode) {
+        const params = new URLSearchParams({
+          syncDb: syncConfig.dbUrl,
+          syncCode: syncConfig.familyCode
+        });
+        window.history.replaceState({}, document.title, `${base}?${params.toString()}`);
+      } else {
+        window.history.replaceState({}, document.title, base);
+      }
+    } catch (e) {
+      // Ignore history errors
+    }
+  }
+
   function checkMagicLinkParams() {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -80,9 +97,8 @@
           dbUrl: syncDb,
           familyCode: syncCode
         });
-        // Clean URL query params so bookmarks/home-screen stay tidy
-        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-        window.history.replaceState({}, document.title, cleanUrl);
+        // Keep query params intact so "Open in Safari" from KakaoTalk
+        // and iOS "Add to Home Screen" preserve the sync connection!
         return true;
       }
     } catch (e) {
@@ -245,6 +261,7 @@
       const pushed = await pushNow(currentState);
       if (!pushed.ok) return pushed;
     }
+    syncUrlWithConfig();
     startListeners();
     return { ok: true, pulledFromCloud: !pulled.empty };
   }
@@ -256,6 +273,7 @@
       dbUrl: syncConfig.dbUrl,
       familyCode: syncConfig.familyCode
     });
+    syncUrlWithConfig();
     emitStatus('offline', '미연결');
   }
 
@@ -272,6 +290,7 @@
     });
 
     if (syncConfig.enabled && getEndpointUrl()) {
+      syncUrlWithConfig();
       pullOnce().then(() => {
         startListeners();
       });

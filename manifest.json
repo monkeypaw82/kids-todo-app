@@ -1,8 +1,7 @@
 {
   "name": "반짝반짝 아이의 할일 관리",
   "short_name": "아이 할일",
-  "description": "요일별 할일 체크, 달력 관리, 주기별 선물, 일일 SMS 알림 웹 앱",
-  "start_url": "./index.html",
+  "description": "요일별 할일 체크, 달력 관리, 주기별 선물, 일일 카카오톡 알림 웹 앱",
   "display": "standalone",
   "background_color": "#fffbf4",
   "theme_color": "#ff6b4a",
