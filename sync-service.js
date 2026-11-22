@@ -11,8 +11,10 @@
   let eventSource = null;
   let pollTimer = null;
   let pushTimer = null;
+  let pendingState = null;
   let lastSyncedUpdatedAt = 0;
   let isApplyingRemote = false;
+  let hasCompletedInitialPull = false;
   let onRemoteStateCallback = null;
   let onStatusChangeCallback = null;
 
@@ -170,9 +172,17 @@
     }
   }
 
-  async function pushNow(state) {
+  async function pushNow(state, options) {
+    const opts = options || {};
     const url = getEndpointUrl();
     if (!syncConfig.enabled || !url || isApplyingRemote) return { ok: false };
+    if (!hasCompletedInitialPull && !opts.allowBeforeInitialPull) return { ok: false };
+
+    pendingState = null;
+    if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+    }
 
     const ts = Date.now();
     lastSyncedUpdatedAt = ts;
@@ -180,6 +190,7 @@
     try {
       const res = await fetch(url, {
         method: 'PUT',
+        keepalive: Boolean(opts.keepalive),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           updatedAt: ts,
@@ -191,7 +202,7 @@
         emitStatus('error', `저장 오류 (${res.status})`);
         return { ok: false, error: `HTTP ${res.status}` };
       }
-      emitStatus('connected', '실시간 동기화됨');
+      emitStatus('connected', '실시간 동기화 중');
       return { ok: true };
     } catch (err) {
       emitStatus('error', '동기화 연결 실패');
@@ -201,10 +212,12 @@
 
   function schedulePush(state) {
     if (!syncConfig.enabled || !getEndpointUrl() || isApplyingRemote) return;
+    if (!hasCompletedInitialPull) return;
+    pendingState = state;
     if (pushTimer) clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
       pushNow(state);
-    }, 350);
+    }, 150);
   }
 
   function stopListeners() {
@@ -265,13 +278,15 @@
   }
 
   async function connectAndSync(newCfg, currentState) {
+    hasCompletedInitialPull = false;
     saveSyncConfig(Object.assign({}, newCfg, { enabled: true }));
     const pulled = await pullOnce();
     if (!pulled.ok) {
       return pulled;
     }
+    hasCompletedInitialPull = true;
     if (pulled.empty) {
-      const pushed = await pushNow(currentState);
+      const pushed = await pushNow(currentState, { allowBeforeInitialPull: true });
       if (!pushed.ok) return pushed;
     }
     syncUrlWithConfig();
@@ -280,6 +295,7 @@
   }
 
   function disconnect() {
+    hasCompletedInitialPull = false;
     stopListeners();
     saveSyncConfig({
       enabled: false,
@@ -298,18 +314,30 @@
     const fromMagicLink = checkMagicLinkParams();
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && syncConfig.enabled && getEndpointUrl()) {
+      if (document.visibilityState === 'hidden' && pendingState) {
+        pushNow(pendingState, { keepalive: true });
+      } else if (document.visibilityState === 'visible' && syncConfig.enabled && getEndpointUrl() && hasCompletedInitialPull) {
         pullOnce();
       }
     });
 
+    window.addEventListener('pagehide', () => {
+      if (pendingState) {
+        pushNow(pendingState, { keepalive: true });
+      }
+    });
+
     if (syncConfig.enabled && getEndpointUrl()) {
+      hasCompletedInitialPull = false;
       syncUrlWithConfig();
       pullOnce().then((res) => {
-        if (res && res.ok && res.empty && typeof getLocalState === 'function') {
-          pushNow(getLocalState());
+        if (res && res.ok) {
+          hasCompletedInitialPull = true;
+          if (res.empty && typeof getLocalState === 'function') {
+            pushNow(getLocalState(), { allowBeforeInitialPull: true });
+          }
+          startListeners();
         }
-        startListeners();
       });
     } else {
       emitStatus('offline', '미연결');

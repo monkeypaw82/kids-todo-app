@@ -161,7 +161,7 @@
         passwordHash: ''
       },
       profile: {
-        title: '민수의 오늘도 화이팅! 🌟',
+        title: '아린이의 오늘 화이팅! 🌟',
         subtitle: '오늘의 할일을 완료하고 멋진 선물을 받아보세요!',
         photoDataUrl: '',
         photoMeta: {
@@ -185,7 +185,7 @@
         cutoffTime: '20:00',
         kakaoEnabled: true,
         kakaoSender: '엄마',
-        kakaoReceiver: '민수',
+        kakaoReceiver: '아린',
         kakaoJsKey: '',
         webhookUrl: ''
       },
@@ -323,6 +323,9 @@
     merged.penaltyLogs = toArray(merged.penaltyLogs);
 
     if (!merged.profile || typeof merged.profile !== 'object') merged.profile = base.profile;
+    if (!merged.profile.title || merged.profile.title === '민수의 오늘도 화이팅! 🌟') {
+      merged.profile.title = '아린이의 오늘 화이팅! 🌟';
+    }
     if (!merged.profile.photoMeta || typeof merged.profile.photoMeta !== 'object') {
       merged.profile.photoMeta = base.profile.photoMeta;
     }

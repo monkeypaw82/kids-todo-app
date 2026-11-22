@@ -142,7 +142,7 @@
   function ensureHeroPhoto() {
     if (!state.profile.photoDataUrl) {
       state.profile.photoDataUrl = PhotoEditor.generateDefaultHeroDataUrl(state.profile.photoMeta);
-      TodoData.saveState(state);
+      TodoData.saveState(state, { skipSync: true });
     }
   }
 
@@ -150,7 +150,7 @@
   function renderHero() {
     ensureHeroPhoto();
     document.getElementById('hero-photo-img').src = state.profile.photoDataUrl;
-    document.getElementById('hero-title').textContent = state.profile.title || '아이의 오늘도 화이팅! 🌟';
+    document.getElementById('hero-title').textContent = state.profile.title || '아린이의 오늘 화이팅! 🌟';
     document.getElementById('hero-subtitle').textContent =
       state.profile.subtitle || '오늘의 할일을 완료하고 멋진 선물을 받아보세요!';
 
