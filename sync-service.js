@@ -1,5 +1,10 @@
 (function (global) {
   const SYNC_CFG_KEY = 'kids_todo_sync_cfg_v1';
+  const DEFAULT_SYNC_CONFIG = {
+    enabled: true,
+    dbUrl: 'https://kids-todo-app-edca1-default-rtdb.asia-southeast1.firebasedatabase.app',
+    familyCode: 'my-family'
+  };
   const CLIENT_ID = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
   let syncConfig = loadSyncConfig();
@@ -14,15 +19,20 @@
   function loadSyncConfig() {
     try {
       const raw = localStorage.getItem(SYNC_CFG_KEY);
-      if (!raw) return { enabled: false, dbUrl: '', familyCode: '' };
+      if (!raw) return Object.assign({}, DEFAULT_SYNC_CONFIG);
       const parsed = JSON.parse(raw);
+      const dbUrl = String(parsed.dbUrl || '').trim();
+      const familyCode = String(parsed.familyCode || '').trim();
+      if (!dbUrl || !familyCode) {
+        return Object.assign({}, DEFAULT_SYNC_CONFIG);
+      }
       return {
-        enabled: Boolean(parsed.enabled),
-        dbUrl: String(parsed.dbUrl || '').trim(),
-        familyCode: String(parsed.familyCode || '').trim()
+        enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
+        dbUrl,
+        familyCode
       };
     } catch (e) {
-      return { enabled: false, dbUrl: '', familyCode: '' };
+      return Object.assign({}, DEFAULT_SYNC_CONFIG);
     }
   }
 
@@ -72,13 +82,16 @@
   function syncUrlWithConfig() {
     try {
       const base = `${window.location.origin}${window.location.pathname}`;
-      if (syncConfig.enabled && syncConfig.dbUrl && syncConfig.familyCode) {
+      const isDefault =
+        normalizeDbUrl(syncConfig.dbUrl) === normalizeDbUrl(DEFAULT_SYNC_CONFIG.dbUrl) &&
+        syncConfig.familyCode === DEFAULT_SYNC_CONFIG.familyCode;
+      if (syncConfig.enabled && syncConfig.dbUrl && syncConfig.familyCode && !isDefault) {
         const params = new URLSearchParams({
           syncDb: syncConfig.dbUrl,
           syncCode: syncConfig.familyCode
         });
         window.history.replaceState({}, document.title, `${base}?${params.toString()}`);
-      } else {
+      } else if (window.location.search) {
         window.history.replaceState({}, document.title, base);
       }
     } catch (e) {
@@ -280,6 +293,7 @@
   function init(callbacks) {
     onRemoteStateCallback = callbacks && callbacks.onRemoteState;
     onStatusChangeCallback = callbacks && callbacks.onStatusChange;
+    const getLocalState = callbacks && callbacks.getLocalState;
 
     const fromMagicLink = checkMagicLinkParams();
 
@@ -291,7 +305,10 @@
 
     if (syncConfig.enabled && getEndpointUrl()) {
       syncUrlWithConfig();
-      pullOnce().then(() => {
+      pullOnce().then((res) => {
+        if (res && res.ok && res.empty && typeof getLocalState === 'function') {
+          pushNow(getLocalState());
+        }
         startListeners();
       });
     } else {

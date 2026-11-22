@@ -1600,6 +1600,7 @@
 
   if (window.SyncService) {
     SyncService.init({
+      getLocalState: () => state,
       onRemoteState: (remoteState) => {
         state = TodoData.hydrateState(remoteState);
         TodoData.saveState(state, { skipSync: true });
